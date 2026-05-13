@@ -15,3 +15,6 @@ staticfiles/
 .idea/
 *.swp
 *.swo
+
+# MkDocs build output
+site/

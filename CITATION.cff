@@ -6,8 +6,8 @@ abstract: >-
   AutoDock Vina for molecular docking, with interactive 3Dmol.js visualization.
 type: software
 authors:
-  - given-names: Gokhan
-    family-names: Ozsari
+  - given-names: Gökhan
+    family-names: ÖZSARI
     email: gokhan.ozsari@chalmers.se
     affiliation: Chalmers University of Technology
 version: "1.0.0"
