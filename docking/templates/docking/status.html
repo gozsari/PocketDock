@@ -1,0 +1,150 @@
+{% extends "docking/base.html" %}
+{% block title %}PocketDock - Job {{ job.id }}{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto px-4 py-12">
+    <div class="text-center mb-8">
+        <h1 class="text-3xl font-bold text-gray-900 mb-2">
+            {{ job.name|default:"Docking Job" }}
+        </h1>
+        <p class="text-gray-500">Job #{{ job.id }} &middot; Started {{ job.created_at|timesince }} ago</p>
+    </div>
+
+    <!-- Pipeline Progress -->
+    <div class="bg-white rounded-xl border border-gray-200 p-8 mb-8">
+        <div class="flex items-center justify-between mb-8">
+            {% with steps="pending,running_p2rank,running_prep,running_vina,completed" %}
+            {% for step_name in "P2Rank Pocket Detection,Structure Preparation,AutoDock Vina Docking,Complete"|make_list %}
+            {% endfor %}
+            {% endwith %}
+
+            <div class="flex items-center w-full">
+                <!-- Step 1: P2Rank -->
+                <div class="flex flex-col items-center flex-1">
+                    <div class="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold
+                        {% if job.status == 'running_p2rank' %}step-active animate-pulse-slow
+                        {% elif job.status == 'running_prep' or job.status == 'running_vina' or job.status == 'completed' %}step-done
+                        {% else %}step-pending{% endif %}">
+                        {% if job.status == 'running_prep' or job.status == 'running_vina' or job.status == 'completed' %}
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                        {% else %}1{% endif %}
+                    </div>
+                    <span class="text-xs mt-2 text-gray-600 text-center">Pocket<br>Detection</span>
+                </div>
+
+                <div class="flex-1 h-1 {% if job.status == 'running_prep' or job.status == 'running_vina' or job.status == 'completed' %}bg-green-500{% elif job.status == 'running_p2rank' %}bg-gradient-to-r from-blue-500 to-gray-200{% else %}bg-gray-200{% endif %} rounded"></div>
+
+                <!-- Step 2: Prep -->
+                <div class="flex flex-col items-center flex-1">
+                    <div class="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold
+                        {% if job.status == 'running_prep' %}step-active animate-pulse-slow
+                        {% elif job.status == 'running_vina' or job.status == 'completed' %}step-done
+                        {% else %}step-pending{% endif %}">
+                        {% if job.status == 'running_vina' or job.status == 'completed' %}
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                        {% else %}2{% endif %}
+                    </div>
+                    <span class="text-xs mt-2 text-gray-600 text-center">Structure<br>Preparation</span>
+                </div>
+
+                <div class="flex-1 h-1 {% if job.status == 'running_vina' or job.status == 'completed' %}bg-green-500{% elif job.status == 'running_prep' %}bg-gradient-to-r from-blue-500 to-gray-200{% else %}bg-gray-200{% endif %} rounded"></div>
+
+                <!-- Step 3: Vina -->
+                <div class="flex flex-col items-center flex-1">
+                    <div class="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold
+                        {% if job.status == 'running_vina' %}step-active animate-pulse-slow
+                        {% elif job.status == 'completed' %}step-done
+                        {% else %}step-pending{% endif %}">
+                        {% if job.status == 'completed' %}
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                        {% else %}3{% endif %}
+                    </div>
+                    <span class="text-xs mt-2 text-gray-600 text-center">Vina<br>Docking</span>
+                </div>
+
+                <div class="flex-1 h-1 {% if job.status == 'completed' %}bg-green-500{% elif job.status == 'running_vina' %}bg-gradient-to-r from-blue-500 to-gray-200{% else %}bg-gray-200{% endif %} rounded"></div>
+
+                <!-- Step 4: Done -->
+                <div class="flex flex-col items-center flex-1">
+                    <div class="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold
+                        {% if job.status == 'completed' %}step-done{% else %}step-pending{% endif %}">
+                        {% if job.status == 'completed' %}
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                        {% else %}4{% endif %}
+                    </div>
+                    <span class="text-xs mt-2 text-gray-600 text-center">Results<br>Ready</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Status Message -->
+        <div class="text-center">
+            {% if job.status == 'failed' %}
+            <div class="bg-red-50 border border-red-200 rounded-lg p-4">
+                <p class="text-red-700 font-medium">Pipeline Failed</p>
+                {% if job.error_message %}
+                <p class="text-red-600 text-sm mt-1">{{ job.error_message }}</p>
+                {% endif %}
+            </div>
+            {% elif job.status == 'completed' %}
+            <a href="{% url 'docking:job_detail' job.id %}?view=results"
+               class="inline-block px-6 py-3 bg-green-500 text-white font-semibold rounded-xl
+                      hover:bg-green-600 transition-colors">
+                View Results
+            </a>
+            {% else %}
+            <p class="text-gray-500">
+                <span class="inline-block w-2 h-2 bg-blue-500 rounded-full animate-pulse mr-2"></span>
+                {{ job.get_status_display }}...
+            </p>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Job Details -->
+    <div class="bg-white rounded-xl border border-gray-200 p-6">
+        <h3 class="text-sm font-semibold text-gray-700 mb-4">Job Details</h3>
+        <dl class="grid grid-cols-2 gap-4 text-sm">
+            <div>
+                <dt class="text-gray-500">Protein</dt>
+                <dd class="text-gray-900 font-medium">{{ job.protein_filename }}</dd>
+            </div>
+            <div>
+                <dt class="text-gray-500">Ligand</dt>
+                <dd class="text-gray-900 font-medium">{{ job.ligand_filename }}</dd>
+            </div>
+            <div>
+                <dt class="text-gray-500">Pockets to Dock</dt>
+                <dd class="text-gray-900 font-medium">{{ job.num_pockets }}</dd>
+            </div>
+            <div>
+                <dt class="text-gray-500">Exhaustiveness</dt>
+                <dd class="text-gray-900 font-medium">{{ job.exhaustiveness }}</dd>
+            </div>
+        </dl>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+{% if job.status != 'completed' and job.status != 'failed' %}
+<script>
+(function poll() {
+    setTimeout(function() {
+        fetch("{% url 'docking:api_job_status' job.id %}")
+            .then(r => r.json())
+            .then(data => {
+                if (data.status === 'completed') {
+                    window.location.href = "{% url 'docking:job_detail' job.id %}?view=results";
+                } else if (data.status === 'failed') {
+                    window.location.reload();
+                } else {
+                    window.location.reload();
+                }
+            })
+            .catch(() => poll());
+    }, 5000);
+})();
+</script>
+{% endif %}
+{% endblock %}

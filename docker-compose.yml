@@ -1,0 +1,47 @@
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+  web:
+    build: .
+    command: >
+      sh -c "python manage.py migrate --noinput &&
+             gunicorn pocketdock.wsgi:application --bind 0.0.0.0:8000 --workers 3 --timeout 300"
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./media:/app/media
+      - db_data:/app/data
+      - static_files:/app/staticfiles
+    environment:
+      - DJANGO_SETTINGS_MODULE=pocketdock.settings
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - DEBUG=1
+    depends_on:
+      - redis
+
+  celery:
+    build: .
+    command: >
+      sh -c "sleep 5 && celery -A pocketdock worker -l info --concurrency=2"
+    volumes:
+      - ./media:/app/media
+      - db_data:/app/data
+    environment:
+      - DJANGO_SETTINGS_MODULE=pocketdock.settings
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - DEBUG=1
+    depends_on:
+      - redis
+      - web
+
+volumes:
+  redis_data:
+  static_files:
+  db_data:

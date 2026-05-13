@@ -1,0 +1,27 @@
+/* PocketDock custom styles - supplements Tailwind CDN */
+
+/* Smooth transitions for interactive elements */
+* {
+    scroll-behavior: smooth;
+}
+
+/* Custom scrollbar for results table */
+.overflow-y-auto::-webkit-scrollbar {
+    width: 6px;
+}
+.overflow-y-auto::-webkit-scrollbar-track {
+    background: #f1f5f9;
+}
+.overflow-y-auto::-webkit-scrollbar-thumb {
+    background: #94a3b8;
+    border-radius: 3px;
+}
+.overflow-y-auto::-webkit-scrollbar-thumb:hover {
+    background: #64748b;
+}
+
+/* File drop zone active state */
+.drop-active {
+    border-color: #3b82f6 !important;
+    background-color: #eff6ff !important;
+}

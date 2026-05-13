@@ -1,0 +1,1625 @@
+{% extends "docking/base.html" %}
+{% block title %}PocketDock - Results: {{ job.name|default:"Job" }}{% endblock %}
+
+{% block extra_head %}
+<style>
+    #viewer-container {
+        width: 100%;
+        height: 500px;
+        position: relative;
+        background: #ffffff;
+        border-radius: 0.5rem;
+        overflow: hidden;
+    }
+    #lignet-svg-wrap {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 500px;
+    }
+    .result-row { cursor: pointer; transition: background-color 0.15s; }
+    .result-row:hover { background-color: #f0f9ff; }
+    .result-row.active { background-color: #dbeafe; border-left: 3px solid #3b82f6; }
+    .sort-btn { cursor: pointer; user-select: none; }
+    .sort-btn:hover { color: #3b82f6; }
+    .pocket-badge {
+        display: inline-flex;
+        align-items: center;
+        padding: 2px 8px;
+        border-radius: 9999px;
+        font-size: 0.7rem;
+        font-weight: 600;
+    }
+    .int-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 3px 10px;
+        border-radius: 9999px;
+        font-size: 0.7rem;
+        font-weight: 600;
+    }
+    .int-hbond { background: #fef3c7; color: #92400e; }
+    .int-hydrophobic { background: #d1fae5; color: #065f46; }
+    .int-saltbridge { background: #fce7f3; color: #9d174d; }
+    .int-pistacking { background: #cffafe; color: #155e75; }
+    .int-pication { background: #ede9fe; color: #5b21b6; }
+    .int-halogen { background: #fee2e2; color: #991b1b; }
+    .int-water { background: #e0f2fe; color: #075985; }
+
+    .int-table-row td { font-size: 0.8rem; padding: 6px 10px; }
+    .int-table-row:nth-child(even) { background: #f8fafc; }
+
+    .panel-tab {
+        padding: 8px 16px;
+        font-size: 0.8rem;
+        font-weight: 600;
+        cursor: pointer;
+        border-bottom: 2px solid transparent;
+        color: #64748b;
+        transition: all 0.15s;
+    }
+    .panel-tab:hover { color: #334155; }
+    .panel-tab.active { color: #2563eb; border-bottom-color: #2563eb; }
+
+    .affinity-cell {
+        font-family: 'SF Mono', 'Fira Code', monospace;
+        font-weight: 600;
+    }
+
+    .viewer-control-btn {
+        padding: 4px 12px;
+        font-size: 0.75rem;
+        border-radius: 6px;
+        border: 1px solid #e2e8f0;
+        background: #fff;
+        color: #475569;
+        cursor: pointer;
+        transition: all 0.15s;
+    }
+    .viewer-control-btn:hover { background: #f1f5f9; border-color: #cbd5e1; }
+    .viewer-control-btn.active { background: #eff6ff; border-color: #93c5fd; color: #2563eb; }
+
+    .legend-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        display: inline-block;
+    }
+
+    /* Fullscreen mode */
+    .fullscreen-active {
+        position: fixed !important;
+        inset: 0 !important;
+        z-index: 9999 !important;
+        background: #f1f5f9 !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        max-width: none !important;
+        overflow: hidden;
+    }
+    .fullscreen-active .fs-header { display: none !important; }
+    .fullscreen-active .fs-grid {
+        grid-template-columns: 1fr 340px !important;
+        gap: 0 !important;
+        height: 100vh !important;
+    }
+    .fullscreen-active .fs-grid.sidebar-collapsed {
+        grid-template-columns: 1fr 0px !important;
+    }
+    .fullscreen-active .fs-viewer-col {
+        height: 100vh !important;
+        overflow: hidden;
+    }
+    .fullscreen-active #viewer-container {
+        height: calc(100vh - 46px) !important;
+        border-radius: 0 !important;
+    }
+    .fullscreen-active #lignet-container,
+    .fullscreen-active #lignet-placeholder,
+    .fullscreen-active #lignet-svg-wrap {
+        height: calc(100vh - 46px) !important;
+        min-height: calc(100vh - 46px) !important;
+    }
+    .fullscreen-active #panel-interactions .p-4 {
+        max-height: calc(100vh - 46px);
+        overflow-y: auto;
+    }
+    .fullscreen-active #panel-interactions .overflow-y-auto {
+        max-height: calc(100vh - 130px) !important;
+    }
+    .fullscreen-active .fs-sidebar {
+        height: 100vh !important;
+        overflow-y: auto;
+        border-left: 1px solid #e2e8f0;
+        background: #fff;
+        transition: width 0.2s, opacity 0.2s;
+    }
+    .fullscreen-active .fs-grid.sidebar-collapsed .fs-sidebar {
+        overflow: hidden;
+        opacity: 0;
+        pointer-events: none;
+    }
+    .fullscreen-active .fs-pocket-summary { display: none !important; }
+    .fullscreen-active .fs-sidebar .fs-pocket-inline { display: block !important; }
+    .fullscreen-active .fs-viewer-card { border-radius: 0 !important; border: none !important; }
+
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="max-w-full mx-auto px-4 py-5" id="results-wrapper">
+    <!-- Header -->
+    <div class="flex items-center justify-between mb-5 fs-header">
+        <div>
+            <h1 class="text-2xl font-bold text-gray-900">{{ job.name|default:"Docking Results" }}</h1>
+            <p class="text-sm text-gray-500">
+                Job #{{ job.id }} &middot; {{ job.protein_filename }} + {{ job.ligand_filename }}
+            </p>
+        </div>
+        <div class="flex space-x-3">
+            <button onclick="downloadCSV()" class="px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors">
+                Download CSV
+            </button>
+            <a href="{% url 'docking:upload' %}" class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors">
+                New Job
+            </a>
+        </div>
+    </div>
+
+    <div class="grid grid-cols-1 xl:grid-cols-12 gap-5 fs-grid" id="results-grid">
+        <!-- LEFT: Visualization Panels (3D + 2D tabs) -->
+        <div class="xl:col-span-8 fs-viewer-col">
+            <div class="bg-white rounded-xl border border-gray-200 overflow-hidden fs-viewer-card">
+                <!-- Tab Bar -->
+                <div class="flex border-b border-gray-200 px-4">
+                    <div class="panel-tab active" data-panel="viewer3d" onclick="switchPanel('viewer3d')">3D Binding Site</div>
+                    <div class="panel-tab" data-panel="lignet2d" onclick="switchPanel('lignet2d')">2D Interaction Map</div>
+                    <div class="panel-tab" data-panel="interactions" onclick="switchPanel('interactions')">Interaction Details</div>
+                </div>
+
+                <!-- Panel: 3D Viewer -->
+                <div id="panel-viewer3d">
+                    <div id="viewer-container" style="position:relative;">
+                        <div id="atom-inspect-panel" style="display:none;position:absolute;top:10px;right:10px;z-index:60;width:260px;max-height:300px;overflow-y:auto;background:#fff;border:1px solid #e2e8f0;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.15);padding:10px 12px;font-size:0.78rem;"></div>
+                    </div>
+                    <div class="px-4 py-3 border-t border-gray-100 flex flex-wrap items-center gap-2">
+                        <button class="viewer-control-btn" id="btn-cartoon" onclick="toggleCartoon()">Protein Cartoon</button>
+                        <button class="viewer-control-btn active" id="btn-pocket-res" onclick="togglePocketResidues()">Pocket Residues</button>
+                        <button class="viewer-control-btn active" id="btn-int-hbond" onclick="toggleIntType('hydrogen_bonds')" style="border-color:#eab308;color:#92400e" title="H-bonds">H-bond</button>
+                        <button class="viewer-control-btn active" id="btn-int-hydrophobic" onclick="toggleIntType('hydrophobic')" style="border-color:#22c55e;color:#065f46" title="Hydrophobic">Hydro.</button>
+                        <button class="viewer-control-btn active" id="btn-int-salt" onclick="toggleIntType('salt_bridges')" style="border-color:#ec4899;color:#9d174d" title="Salt bridges">Salt</button>
+                        <button class="viewer-control-btn active" id="btn-int-pistack" onclick="toggleIntType('pi_stacking')" style="border-color:#06b6d4;color:#155e75" title="Pi-stacking">Pi-st.</button>
+                        <button class="viewer-control-btn active" id="btn-int-pication" onclick="toggleIntType('pi_cation')" style="border-color:#8b5cf6;color:#4c1d95" title="Pi-cation">Pi-cat.</button>
+                        <button class="viewer-control-btn active" id="btn-int-halogen" onclick="toggleIntType('halogen_bonds')" style="border-color:#ef4444;color:#7f1d1d" title="Halogen bonds">Halogen</button>
+                        <span class="text-gray-300 mx-1">|</span>
+                        <button class="viewer-control-btn" id="btn-surface" onclick="toggleSurface()">Pocket Surface</button>
+                        <button class="viewer-control-btn" id="btn-labels" onclick="toggleLabels()">Labels</button>
+                        <button class="viewer-control-btn active" id="btn-distances" onclick="toggleDistances()">Distances</button>
+                        <div style="position:relative;display:inline-block">
+                            <button class="viewer-control-btn" id="btn-thresholds" onclick="toggleThresholdsPopover()" title="Per-type distance thresholds (&#197;)">Thresholds</button>
+                            <div id="thresholds-popover" style="display:none;position:absolute;bottom:100%;right:0;z-index:50;margin-bottom:6px;width:300px;background:#fff;border:1px solid #e2e8f0;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.12);padding:12px 14px;">
+                                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+                                    <span style="font-weight:600;font-size:0.8rem;color:#334155">Distance Thresholds (&#197;)</span>
+                                    <button onclick="resetThresholdDefaults()" style="font-size:0.65rem;color:#3b82f6;cursor:pointer;background:none;border:none;font-weight:500">Reset Defaults</button>
+                                </div>
+                                <div id="threshold-sliders"></div>
+                            </div>
+                        </div>
+                        <button class="viewer-control-btn" id="btn-nearmiss" onclick="toggleNearMiss()" title="Show interactions just beyond threshold (within 120%)">Near-miss</button>
+                        <button class="viewer-control-btn" id="btn-prot-surface" onclick="toggleProteinSurface()">Protein Surface</button>
+                        <div class="flex-1"></div>
+                        <button onclick="resetView()" class="text-xs text-blue-500 hover:text-blue-700 font-medium">Reset View</button>
+                        <button onclick="savePNG()" class="viewer-control-btn" title="Save as PNG">PNG</button>
+                        <button onclick="toggleFullscreen()" class="viewer-control-btn" id="btn-fullscreen" title="Toggle fullscreen">
+                            <svg id="fs-icon-expand" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
+                            <svg id="fs-icon-collapse" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none"><polyline points="4 14 10 14 10 20"/><polyline points="20 10 14 10 14 4"/><line x1="14" y1="10" x2="21" y2="3"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
+                        </button>
+                    </div>
+                    <!-- Second control row: representation & coloring -->
+                    <div class="px-4 py-2 border-t border-gray-50 flex flex-wrap items-center gap-3 text-xs">
+                        <label class="text-gray-500 font-medium">Ligand:</label>
+                        <select id="sel-lig-repr" onchange="changeLigandRepr(this.value)" class="viewer-control-btn text-xs py-1 pr-6">
+                            <option value="stick">Stick</option>
+                            <option value="ballstick">Ball & Stick</option>
+                            <option value="sphere">Sphere</option>
+                        </select>
+                        <span class="text-gray-300">|</span>
+                        <label class="text-gray-500 font-medium">Protein:</label>
+                        <select id="sel-prot-repr" onchange="changeProteinRepr(this.value)" class="viewer-control-btn text-xs py-1 pr-6">
+                            <option value="cartoon">Cartoon</option>
+                            <option value="ribbon">Ribbon</option>
+                            <option value="tube">Tube</option>
+                            <option value="trace">Trace</option>
+                        </select>
+                        <select id="sel-prot-color" onchange="changeProteinColor(this.value)" class="viewer-control-btn text-xs py-1 pr-6">
+                            <option value="spectrum">Spectrum</option>
+                            <option value="ss">Secondary Structure</option>
+                            <option value="hydrophobicity">Hydrophobicity</option>
+                            <option value="bfactor">B-factor</option>
+                            <option value="chain">Chain</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Panel: 2D Interaction Diagram -->
+                <div id="panel-lignet2d" style="display:none;">
+                    <div class="px-4 pt-2 text-right">
+                        <button onclick="export2DMapPNG()" class="viewer-control-btn text-xs" title="Export 2D map as PNG">Export PNG</button>
+                    </div>
+                    <div id="lignet-container" style="min-height:500px; display:flex; align-items:center; justify-content:center;">
+                        <div class="text-gray-400 text-sm" id="lignet-placeholder">
+                            Select a pose to view the 2D interaction network
+                        </div>
+                        <div id="lignet-svg-wrap" style="display:none; width:100%; height:100%;"></div>
+                    </div>
+                </div>
+
+                <!-- Panel: Interaction Details Table -->
+                <div id="panel-interactions" style="display:none;">
+                    <div class="p-4">
+                        <div id="interaction-summary" class="mb-3 p-3 bg-blue-50 border border-blue-100 rounded-lg text-sm text-gray-700 leading-relaxed" style="display:none;"></div>
+                        <div class="flex items-center justify-between mb-3">
+                            <div class="flex flex-wrap gap-2" id="interaction-badges">
+                            <span class="text-sm text-gray-400">Select a pose to view interactions</span>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <select id="interaction-filter" onchange="changeInteractionFilter(this.value)" class="viewer-control-btn text-xs py-1 pr-6">
+                                    <option value="all">All types</option>
+                                    <option value="aromatic">Aromatic only</option>
+                                    <option value="hbonds">H-bonds only</option>
+                                    <option value="charged">Charged only</option>
+                                </select>
+                                <button onclick="exportInteractionsCSV()" class="viewer-control-btn text-xs" title="Export interactions as CSV">Export CSV</button>
+                            </div>
+                        </div>
+                        <!-- Interaction table -->
+                        <div class="overflow-y-auto" style="max-height: 420px;">
+                            <table class="w-full text-sm" id="interaction-table">
+                                <thead class="bg-gray-50 sticky top-0">
+                                    <tr>
+                                        <th class="px-3 py-2 text-left text-xs font-semibold text-gray-500 uppercase">Type</th>
+                                        <th class="px-3 py-2 text-left text-xs font-semibold text-gray-500 uppercase">Residue</th>
+                                        <th class="px-3 py-2 text-left text-xs font-semibold text-gray-500 uppercase">Prot. Atom</th>
+                                        <th class="px-3 py-2 text-left text-xs font-semibold text-gray-500 uppercase">Lig. Atom</th>
+                                        <th class="px-3 py-2 text-left text-xs font-semibold text-gray-500 uppercase">Dist. (A)</th>
+                                        <th class="px-3 py-2 text-left text-xs font-semibold text-gray-500 uppercase">Angle</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="interaction-tbody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Pocket Summary -->
+            <div class="mt-4 bg-white rounded-xl border border-gray-200 p-4 fs-pocket-summary">
+                <h3 class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Detected Pockets</h3>
+                <div class="flex flex-wrap gap-2" id="pocket-badges"></div>
+            </div>
+        </div>
+
+        <!-- RIGHT: Results Ranking Table -->
+        <div class="xl:col-span-4 fs-sidebar">
+            <div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                <div class="p-4 border-b border-gray-200">
+                    <h3 class="font-semibold text-gray-900">Docking Results</h3>
+                    <p class="text-xs text-gray-500 mt-1" id="result-count"></p>
+                </div>
+                <div class="overflow-y-auto" style="max-height: 580px;">
+                    <table class="w-full text-sm">
+                        <thead class="bg-gray-50 sticky top-0">
+                            <tr>
+                                <th class="px-3 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase sort-btn" data-sort="pocket">Pocket</th>
+                                <th class="px-3 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase sort-btn" data-sort="probability">Prob.</th>
+                                <th class="px-3 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase sort-btn" data-sort="affinity">Affinity</th>
+                                <th class="px-3 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase sort-btn" data-sort="combined">Score</th>
+                            </tr>
+                        </thead>
+                        <tbody id="results-body"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Selected Pose Info -->
+            <div class="mt-4 bg-white rounded-xl border border-gray-200 p-4" id="pose-info" style="display:none;">
+                <h3 class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Selected Pose</h3>
+                <dl class="grid grid-cols-2 gap-y-2 gap-x-4 text-sm" id="pose-details"></dl>
+            </div>
+
+            <!-- Pocket badges shown in sidebar during fullscreen -->
+            <div class="p-4 border-t border-gray-200 fs-pocket-inline" style="display:none;">
+                <h3 class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Pockets</h3>
+                <div class="flex flex-wrap gap-1" id="pocket-badges-fs"></div>
+            </div>
+        </div>
+
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const JOB_ID = {{ job.id }};
+const API_BASE = "/api/jobs/" + JOB_ID;
+let viewer = null;
+let proteinModel = null;
+let proteinDataCache = null;
+let proteinFmtCache = 'pdb';
+let ligandModels = {};
+let allResults = [];
+let currentSort = {field: 'combined', asc: true};
+let activePoseKey = null;
+let currentInteractions = null;
+
+let showCartoon = false;
+let showPocketResidues = true;
+let showSurface = false;
+let showLabels = false;
+
+let interactionToggles = {
+    hydrogen_bonds: true, hydrophobic: true,
+    salt_bridges: true, pi_stacking: true,
+    pi_cation: true, halogen_bonds: true,
+};
+
+const THRESHOLD_DEFAULTS = {
+    hydrogen_bonds: 3.5, hydrophobic: 4.0,
+    salt_bridges: 4.0, pi_stacking: 5.5,
+    pi_cation: 6.0, halogen_bonds: 4.0,
+};
+const THRESHOLD_RANGES = {
+    hydrogen_bonds: {min: 2.5, max: 4.0},
+    hydrophobic:    {min: 3.0, max: 5.0},
+    salt_bridges:   {min: 3.0, max: 6.0},
+    pi_stacking:    {min: 3.0, max: 7.0},
+    pi_cation:      {min: 3.0, max: 7.0},
+    halogen_bonds:  {min: 2.5, max: 4.0},
+};
+let interactionThresholds = {...THRESHOLD_DEFAULTS};
+let showNearMiss = false;
+const NEAR_MISS_FACTOR = 1.2;
+let interactionFilter = 'all';
+const AROMATIC_RES_SET = new Set(['PHE','TYR','TRP','HIS']);
+
+function filterInteractions(interactions) {
+    if (!interactions) return null;
+    const filtered = {};
+    for (const type of Object.keys(interactions)) {
+        const thresh = interactionThresholds[type];
+        if (thresh == null) { filtered[type] = interactions[type]; continue; }
+        filtered[type] = [];
+        for (const item of (interactions[type] || [])) {
+            if (!item.distance || item.distance <= thresh) {
+                filtered[type].push({...item, _nearMiss: false});
+            } else if (showNearMiss && item.distance <= thresh * NEAR_MISS_FACTOR) {
+                filtered[type].push({...item, _nearMiss: true});
+            }
+        }
+    }
+    return filtered;
+}
+
+let showDistances = true;
+let inspectHighlight = null;
+let ligandRepr = 'stick';
+let proteinRepr = 'cartoon';
+let proteinColor = 'spectrum';
+let showProteinSurface = false;
+
+let pocketSurfaceHandle = null;
+let proteinSurfaceHandle = null;
+let drawnLabels = [];
+let drawnShapes = [];
+let drawnDistLabels = [];
+
+const POCKET_COLORS = [
+    '#3b82f6','#ef4444','#10b981','#f59e0b','#8b5cf6',
+    '#ec4899','#14b8a6','#f97316','#6366f1','#84cc16',
+    '#06b6d4','#e11d48','#22c55e','#eab308','#a855f7',
+];
+
+const INTERACTION_COLORS = {
+    hydrogen_bonds: '#eab308',
+    hydrophobic: '#22c55e',
+    salt_bridges: '#ec4899',
+    pi_stacking: '#06b6d4',
+    pi_cation: '#8b5cf6',
+    halogen_bonds: '#ef4444',
+};
+
+const INTERACTION_LABELS = {
+    hydrogen_bonds: 'H-bond',
+    hydrophobic: 'Hydrophobic',
+    salt_bridges: 'Salt Bridge',
+    pi_stacking: 'Pi-Stacking',
+    pi_cation: 'Pi-Cation',
+    halogen_bonds: 'Halogen Bond',
+};
+
+const INTERACTION_CSS = {
+    hydrogen_bonds: 'int-hbond',
+    hydrophobic: 'int-hydrophobic',
+    salt_bridges: 'int-saltbridge',
+    pi_stacking: 'int-pistacking',
+    pi_cation: 'int-pication',
+    halogen_bonds: 'int-halogen',
+};
+
+document.addEventListener('DOMContentLoaded', init);
+document.addEventListener('keydown', e => { if (e.key === 'Escape') { document.getElementById('atom-inspect-panel').style.display = 'none'; clearInspectHighlight(); } });
+
+async function init() {
+    viewer = $3Dmol.createViewer('viewer-container', {
+        backgroundColor: '#ffffff',
+        antialias: true,
+    });
+
+    const resultsData = await fetch(API_BASE + "/results/").then(r => r.json());
+    allResults = resultsData.results || [];
+    const pockets = resultsData.pockets || [];
+    const proteinFile = resultsData.protein_file || "protein.pdb";
+
+    // Load protein and cache data for re-use on pose switches
+    try {
+        const resp = await fetch(API_BASE + "/files/" + encodeURIComponent(proteinFile));
+        if (!resp.ok) throw new Error("HTTP " + resp.status);
+        proteinDataCache = await resp.text();
+        proteinFmtCache = proteinFile.toLowerCase().endsWith('.cif') ? 'cif' : 'pdb';
+        proteinModel = viewer.addModel(proteinDataCache, proteinFmtCache);
+        viewer.setStyle({model: proteinModel}, getProteinReprSpec());
+    } catch(e) { console.error("Failed to load protein:", e); }
+
+    // Build pocket badges
+    const badgeContainer = document.getElementById('pocket-badges');
+    pockets.forEach((pocket, i) => {
+        const color = POCKET_COLORS[i % POCKET_COLORS.length];
+        const prob = pocket.probability;
+        const drugLabel = prob > 0.8 ? 'Highly druggable' : prob > 0.5 ? 'Moderately druggable' : 'Low druggability';
+        const drugColor = prob > 0.8 ? '#059669' : prob > 0.5 ? '#d97706' : '#9ca3af';
+
+        const badge = document.createElement('div');
+        badge.className = 'flex flex-col items-start';
+        badge.innerHTML = `
+            <span class="pocket-badge" style="background:${color}22;color:${color}">P${pocket.rank} &middot; ${(prob * 100).toFixed(0)}% &middot; Score ${pocket.score.toFixed(1)}</span>
+            <span style="font-size:0.6rem;color:${drugColor};font-weight:600;margin-top:1px;margin-left:8px;">${drugLabel}</span>
+        `;
+        badgeContainer.appendChild(badge);
+
+        // Render composition bar if available
+        const comp = pocket.composition;
+        if (comp && comp.total > 0) {
+            const bar = document.createElement('div');
+            bar.style.cssText = 'display:flex;height:4px;width:100%;border-radius:2px;overflow:hidden;margin-top:2px;margin-left:8px;max-width:120px;';
+            const segs = [
+                {pct: comp.hydrophobic || 0, color: '#92400e', title: 'Hydrophobic'},
+                {pct: comp.polar || 0, color: '#2563eb', title: 'Polar'},
+                {pct: comp.positive || 0, color: '#dc2626', title: 'Positive'},
+                {pct: comp.negative || 0, color: '#7c3aed', title: 'Negative'},
+                {pct: comp.special || 0, color: '#9ca3af', title: 'Gly'},
+            ];
+            segs.forEach(s => {
+                if (s.pct > 0) {
+                    const seg = document.createElement('div');
+                    seg.style.cssText = `width:${s.pct}%;background:${s.color};`;
+                    seg.title = `${s.title}: ${s.pct.toFixed(0)}%`;
+                    bar.appendChild(seg);
+                }
+            });
+            badge.appendChild(bar);
+        }
+    });
+
+    renderResults();
+    viewer.zoomTo();
+    viewer.render();
+
+    // Sort headers
+    document.querySelectorAll('.sort-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const field = btn.dataset.sort;
+            if (currentSort.field === field) {
+                currentSort.asc = !currentSort.asc;
+            } else {
+                currentSort.field = field;
+                currentSort.asc = true;
+            }
+            renderResults();
+        });
+    });
+}
+
+function switchPanel(panel) {
+    ['viewer3d', 'lignet2d', 'interactions'].forEach(p => {
+        document.getElementById('panel-' + p).style.display = (p === panel) ? '' : 'none';
+        document.querySelector(`[data-panel="${p}"]`).classList.toggle('active', p === panel);
+    });
+}
+
+// ── Viewer Controls ──
+
+function getProteinColorSpec() {
+    switch (proteinColor) {
+        case 'ss': return {color: 'ss'};
+        case 'chain': return {colorscheme: 'chain'};
+        case 'bfactor': return {colorscheme: {prop: 'b', gradient: 'rwb', min: 0, max: 100}};
+        case 'hydrophobicity': return {
+            colorfunc: function(atom) {
+                const hp = {ALA:1.8,VAL:4.2,LEU:3.8,ILE:4.5,PRO:-1.6,PHE:2.8,TRP:-0.9,MET:1.9,
+                    GLY:-0.4,SER:-0.8,THR:-0.7,CYS:2.5,TYR:-1.3,ASN:-3.5,GLN:-3.5,
+                    ASP:-3.5,GLU:-3.5,LYS:-3.9,ARG:-4.5,HIS:-3.2};
+                const v = hp[atom.resn] || 0;
+                const t = (v + 4.5) / 9.0;
+                const r = Math.round(139 * t + 30 * (1-t));
+                const g = Math.round(90 * t + 100 * (1-t));
+                const b = Math.round(43 * t + 200 * (1-t));
+                return 'rgb(' + r + ',' + g + ',' + b + ')';
+            }
+        };
+        default: return {color: 'spectrum'};
+    }
+}
+
+function getProteinReprSpec() {
+    const colorSpec = getProteinColorSpec();
+    const base = {opacity: 1.0, hidden: !showCartoon, ...colorSpec};
+    switch (proteinRepr) {
+        case 'ribbon': return {cartoon: {style: 'ribbon', ...base}};
+        case 'tube': return {cartoon: {style: 'trace', tubes: true, thickness: 0.4, ...base}};
+        case 'trace': return {cartoon: {style: 'trace', ...base}};
+        default: return {cartoon: base};
+    }
+}
+
+function applyProteinStyle() {
+    if (proteinModel === null) return;
+    viewer.setStyle({model: proteinModel}, getProteinReprSpec());
+    viewer.render();
+}
+
+function toggleCartoon() {
+    showCartoon = !showCartoon;
+    document.getElementById('btn-cartoon').classList.toggle('active', showCartoon);
+    applyProteinStyle();
+}
+
+function changeProteinColor(value) {
+    proteinColor = value;
+    applyProteinStyle();
+}
+
+function changeProteinRepr(value) {
+    proteinRepr = value;
+    applyProteinStyle();
+}
+
+function rebuildSurfaces() {
+    viewer.removeAllSurfaces();
+    pocketSurfaceHandle = null;
+    proteinSurfaceHandle = null;
+
+    if (showProteinSurface && proteinModel) {
+        proteinSurfaceHandle = viewer.addSurface($3Dmol.SurfaceType.VDW, {
+            opacity: 0.7, color: '#f97316',
+        }, {model: proteinModel});
+    }
+    if (showSurface && proteinModel && ligandModels[activePoseKey]) {
+        addPocketSurface();
+    }
+    viewer.render();
+}
+
+function toggleProteinSurface() {
+    showProteinSurface = !showProteinSurface;
+    document.getElementById('btn-prot-surface').classList.toggle('active', showProteinSurface);
+    rebuildSurfaces();
+}
+
+function changeLigandRepr(value) {
+    ligandRepr = value;
+    if (!activePoseKey || !ligandModels[activePoseKey]) return;
+    const model = ligandModels[activePoseKey];
+    let style;
+    switch (value) {
+        case 'ballstick':
+            style = {stick: {radius: 0.15, colorscheme: 'greenCarbon'}, sphere: {radius: 0.4, colorscheme: 'Jmol'}};
+            break;
+        case 'sphere':
+            style = {sphere: {colorscheme: 'Jmol'}};
+            break;
+        default:
+            style = {stick: {radius: 0.25, colorscheme: 'greenCarbon'}};
+    }
+    viewer.setStyle({model: model}, style);
+    viewer.render();
+}
+
+function togglePocketResidues() {
+    showPocketResidues = !showPocketResidues;
+    document.getElementById('btn-pocket-res').classList.toggle('active', showPocketResidues);
+    redrawPose();
+}
+
+const INT_BTN_IDS = {
+    hydrogen_bonds: 'btn-int-hbond', hydrophobic: 'btn-int-hydrophobic',
+    salt_bridges: 'btn-int-salt', pi_stacking: 'btn-int-pistack',
+    pi_cation: 'btn-int-pication', halogen_bonds: 'btn-int-halogen',
+};
+
+function toggleIntType(type) {
+    interactionToggles[type] = !interactionToggles[type];
+    const btnId = INT_BTN_IDS[type];
+    if (btnId) document.getElementById(btnId).classList.toggle('active', interactionToggles[type]);
+    redrawInteractions();
+}
+
+const THRESHOLD_SLIDER_COLORS = {
+    hydrogen_bonds: '#eab308', hydrophobic: '#22c55e',
+    salt_bridges: '#ec4899', pi_stacking: '#06b6d4',
+    pi_cation: '#8b5cf6', halogen_bonds: '#ef4444',
+};
+
+function buildThresholdSliders() {
+    const container = document.getElementById('threshold-sliders');
+    if (!container) return;
+    let html = '';
+    const types = ['hydrogen_bonds','hydrophobic','salt_bridges','pi_stacking','pi_cation','halogen_bonds'];
+    types.forEach(type => {
+        const r = THRESHOLD_RANGES[type];
+        const val = interactionThresholds[type];
+        const color = THRESHOLD_SLIDER_COLORS[type] || '#94a3b8';
+        const label = INTERACTION_LABELS[type] || type;
+        html += `<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
+            <span style="width:80px;font-size:0.7rem;font-weight:500;color:${color};white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${label}">${label}</span>
+            <input type="range" min="${r.min}" max="${r.max}" step="0.1" value="${val}"
+                   style="flex:1;accent-color:${color};height:16px;cursor:pointer"
+                   oninput="updateThreshold('${type}', this.value)"
+                   id="thresh-slider-${type}">
+            <span id="thresh-val-${type}" style="width:36px;font-size:0.7rem;font-family:monospace;color:#475569;text-align:right">${val.toFixed(1)}</span>
+        </div>`;
+    });
+    container.innerHTML = html;
+}
+
+function toggleThresholdsPopover() {
+    const pop = document.getElementById('thresholds-popover');
+    const btn = document.getElementById('btn-thresholds');
+    const visible = pop.style.display !== 'none';
+    pop.style.display = visible ? 'none' : 'block';
+    btn.classList.toggle('active', !visible);
+    if (!visible) {
+        buildThresholdSliders();
+        setTimeout(() => {
+            document.addEventListener('click', closeThresholdsOnClickOutside);
+        }, 0);
+    } else {
+        document.removeEventListener('click', closeThresholdsOnClickOutside);
+    }
+}
+
+function closeThresholdsOnClickOutside(e) {
+    const pop = document.getElementById('thresholds-popover');
+    const btn = document.getElementById('btn-thresholds');
+    if (!pop.contains(e.target) && e.target !== btn) {
+        pop.style.display = 'none';
+        btn.classList.remove('active');
+        document.removeEventListener('click', closeThresholdsOnClickOutside);
+    }
+}
+
+function updateThreshold(type, value) {
+    interactionThresholds[type] = parseFloat(value);
+    const valEl = document.getElementById('thresh-val-' + type);
+    if (valEl) valEl.textContent = parseFloat(value).toFixed(1);
+    redrawAllInteractions();
+}
+
+function resetThresholdDefaults() {
+    Object.assign(interactionThresholds, THRESHOLD_DEFAULTS);
+    buildThresholdSliders();
+    redrawAllInteractions();
+}
+
+function getActiveAffinity() {
+    if (!activePoseKey) return null;
+    const r = allResults.find(r => `p${r.pocket_rank}_pose${r.pose_rank}` === activePoseKey);
+    return r ? r.affinity : null;
+}
+
+function redrawAllInteractions() {
+    redrawInteractions();
+    renderInteractionBadges(currentInteractions);
+    renderInteractionTable(currentInteractions);
+    renderInteractionSummary(currentInteractions, getActiveAffinity());
+    render2DInteractionMap(currentInteractions);
+    if (showLabels) {
+        drawnLabels.forEach(l => viewer.removeLabel(l));
+        drawnLabels = [];
+        drawResidueLabels();
+        viewer.render();
+    }
+}
+
+function redrawInteractions() {
+    drawnShapes.forEach(s => viewer.removeShape(s));
+    drawnShapes = [];
+    drawnDistLabels.forEach(l => viewer.removeLabel(l));
+    drawnDistLabels = [];
+    if (currentInteractions) drawInteractions3D(applyTypeFilter(filterInteractions(currentInteractions)));
+    viewer.render();
+}
+
+function toggleSurface() {
+    showSurface = !showSurface;
+    document.getElementById('btn-surface').classList.toggle('active', showSurface);
+    rebuildSurfaces();
+}
+
+function addPocketSurface() {
+    if (pocketSurfaceHandle) {
+        viewer.removeSurface(pocketSurfaceHandle);
+        pocketSurfaceHandle = null;
+    }
+    if (!proteinModel || !ligandModels[activePoseKey]) return;
+
+    // Get ligand atom positions and find nearby protein atoms
+    const ligAtoms = ligandModels[activePoseKey].selectedAtoms({});
+    if (!ligAtoms || ligAtoms.length === 0) return;
+
+    const protAtoms = proteinModel.selectedAtoms({});
+    const nearbyIndices = [];
+
+    protAtoms.forEach((pa, idx) => {
+        const near = ligAtoms.some(la => {
+            const dx = pa.x - la.x, dy = pa.y - la.y, dz = pa.z - la.z;
+            return (dx*dx + dy*dy + dz*dz) <= 25;
+        });
+        if (near) nearbyIndices.push(pa.serial);
+    });
+
+    if (nearbyIndices.length === 0) return;
+
+    pocketSurfaceHandle = viewer.addSurface($3Dmol.SurfaceType.VDW, {
+        opacity: 0.55,
+        color: '#f97316',
+    }, {model: proteinModel, serial: nearbyIndices});
+}
+
+function toggleLabels() {
+    showLabels = !showLabels;
+    document.getElementById('btn-labels').classList.toggle('active', showLabels);
+    if (showLabels) {
+        drawResidueLabels();
+    } else {
+        drawnLabels.forEach(l => viewer.removeLabel(l));
+        drawnLabels = [];
+    }
+    viewer.render();
+}
+
+function toggleNearMiss() {
+    showNearMiss = !showNearMiss;
+    document.getElementById('btn-nearmiss').classList.toggle('active', showNearMiss);
+    redrawAllInteractions();
+}
+
+function changeInteractionFilter(value) {
+    interactionFilter = value;
+    redrawAllInteractions();
+}
+
+function applyTypeFilter(filtered) {
+    if (!filtered || interactionFilter === 'all') return filtered;
+    const out = {};
+    const resName = r => (r || '').replace(/\d+/g, '');
+    for (const type of Object.keys(filtered)) {
+        const items = filtered[type] || [];
+        if (interactionFilter === 'aromatic') {
+            if (type === 'pi_stacking' || type === 'pi_cation') { out[type] = items; }
+            else { out[type] = items.filter(i => AROMATIC_RES_SET.has(resName(i.protein_res))); }
+        } else if (interactionFilter === 'hbonds') {
+            out[type] = type === 'hydrogen_bonds' ? items : [];
+        } else if (interactionFilter === 'charged') {
+            if (type === 'salt_bridges') { out[type] = items; }
+            else { out[type] = items.filter(i => {const rn = resName(i.protein_res); return ['ARG','LYS','HIS','ASP','GLU'].includes(rn);}); }
+        } else { out[type] = items; }
+    }
+    return out;
+}
+
+function toggleDistances() {
+    showDistances = !showDistances;
+    document.getElementById('btn-distances').classList.toggle('active', showDistances);
+    if (showDistances) {
+        redrawInteractions();
+    } else {
+        drawnDistLabels.forEach(l => viewer.removeLabel(l));
+        drawnDistLabels = [];
+        viewer.render();
+    }
+}
+
+function resetView() {
+    if (ligandModels[activePoseKey]) {
+        viewer.zoomTo({model: ligandModels[activePoseKey]});
+    } else {
+        viewer.zoomTo();
+    }
+    viewer.render();
+}
+
+function savePNG() {
+    const uri = viewer.pngURI();
+    const a = document.createElement('a');
+    a.href = uri;
+    a.download = `pocketdock_job${JOB_ID}_${activePoseKey || 'view'}.png`;
+    a.click();
+}
+
+function exportInteractionsCSV() {
+    if (!currentInteractions) return;
+    const filtered = applyTypeFilter(filterInteractions(currentInteractions));
+    let csv = 'Type,Residue,Protein_Atom,Ligand_Atom,Ligand_Atom_ID,Distance_A,Angle,Near_Miss\n';
+    const types = ['hydrogen_bonds','hydrophobic','salt_bridges','pi_stacking','pi_cation','halogen_bonds'];
+    types.forEach(type => {
+        (filtered[type] || []).forEach(item => {
+            csv += `${INTERACTION_LABELS[type] || type},${item.protein_res || ''},${item.protein_atom || ''},${item.ligand_atom || ''},${item.ligand_atom_id || ''},${item.distance || ''},${item.angle || ''},${item._nearMiss ? 'yes' : ''}\n`;
+        });
+    });
+    const blob = new Blob([csv], {type: 'text/csv'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `pocketdock_job${JOB_ID}_${activePoseKey || 'pose'}_interactions.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+}
+
+function export2DMapPNG() {
+    const svgEl = document.querySelector('#lignet-svg-wrap svg');
+    if (!svgEl) return;
+    const svgClone = svgEl.cloneNode(true);
+    const vb = svgEl.viewBox.baseVal;
+    const w = vb.width || 560;
+    const h = vb.height || 520;
+    svgClone.setAttribute('width', w);
+    svgClone.setAttribute('height', h);
+    const svgData = new XMLSerializer().serializeToString(svgClone);
+    const svgBlob = new Blob([svgData], {type: 'image/svg+xml;charset=utf-8'});
+    const url = URL.createObjectURL(svgBlob);
+    const img = new Image();
+    img.onload = function() {
+        const scale = 2;
+        const canvas = document.createElement('canvas');
+        canvas.width = w * scale;
+        canvas.height = h * scale;
+        const ctx = canvas.getContext('2d');
+        ctx.scale(scale, scale);
+        ctx.drawImage(img, 0, 0, w, h);
+        URL.revokeObjectURL(url);
+        const pngUri = canvas.toDataURL('image/png');
+        const a = document.createElement('a');
+        a.href = pngUri;
+        a.download = `pocketdock_job${JOB_ID}_${activePoseKey || 'pose'}_2d_map.png`;
+        a.click();
+    };
+    img.src = url;
+}
+
+// ── Results Table ──
+
+function renderResults() {
+    const sorted = [...allResults].sort((a, b) => {
+        let va, vb;
+        switch(currentSort.field) {
+            case 'pocket': va = a.pocket_rank; vb = b.pocket_rank; break;
+            case 'probability': va = a.pocket_probability; vb = b.pocket_probability; break;
+            case 'affinity': va = a.affinity; vb = b.affinity; break;
+            case 'combined': va = a.combined_score; vb = b.combined_score; break;
+            default: va = a.combined_score; vb = b.combined_score;
+        }
+        return currentSort.asc ? (va - vb) : (vb - va);
+    });
+
+    const tbody = document.getElementById('results-body');
+    tbody.innerHTML = '';
+    document.getElementById('result-count').textContent = `${sorted.length} poses across ${new Set(sorted.map(r => r.pocket_rank)).size} pockets`;
+
+    sorted.forEach(result => {
+        const key = `p${result.pocket_rank}_pose${result.pose_rank}`;
+        const color = POCKET_COLORS[(result.pocket_rank - 1) % POCKET_COLORS.length];
+
+        // Affinity gradient: more negative = greener
+        const affinityNorm = Math.min(1, Math.max(0, (-result.affinity - 3) / 7));
+        const affinityBg = `rgba(${Math.round(34 + (1-affinityNorm)*200)}, ${Math.round(197*affinityNorm + 80*(1-affinityNorm))}, ${Math.round(94*affinityNorm + 80*(1-affinityNorm))}, 0.15)`;
+
+        const tr = document.createElement('tr');
+        tr.className = 'result-row' + (key === activePoseKey ? ' active' : '');
+        tr.dataset.key = key;
+        tr.innerHTML = `
+            <td class="px-3 py-2.5">
+                <span class="pocket-badge" style="background:${color}22;color:${color}">P${result.pocket_rank}</span>
+                <span class="text-gray-400 text-xs ml-1">#${result.pose_rank}</span>
+            </td>
+            <td class="px-3 py-2.5 text-gray-600 text-xs">${(result.pocket_probability * 100).toFixed(1)}%</td>
+            <td class="px-3 py-2.5 affinity-cell" style="background:${affinityBg}">${result.affinity.toFixed(1)}</td>
+            <td class="px-3 py-2.5">
+                <span class="font-semibold text-sm ${result.combined_score > 0.6 ? 'text-green-600' : result.combined_score > 0.3 ? 'text-yellow-600' : 'text-gray-500'}">
+                    ${result.combined_score.toFixed(3)}
+                </span>
+            </td>
+        `;
+        tr.addEventListener('click', () => selectPose(result, key));
+        tbody.appendChild(tr);
+    });
+}
+
+// ── Pose Selection ──
+
+async function selectPose(result, key) {
+    activePoseKey = key;
+
+    document.querySelectorAll('.result-row').forEach(r => r.classList.remove('active'));
+    document.querySelector(`[data-key="${key}"]`)?.classList.add('active');
+
+    // Clear previous
+    clearPoseVisuals();
+
+    // Load pose PDB
+    if (result.pose_file) {
+        try {
+            const resp = await fetch(API_BASE + "/files/" + result.pose_file);
+            if (!resp.ok) throw new Error("HTTP " + resp.status);
+            const poseData = await resp.text();
+            if (poseData.trim().length > 0) {
+                const model = viewer.addModel(poseData, "pdb");
+                let ligStyle;
+                switch (ligandRepr) {
+                    case 'ballstick': ligStyle = {stick: {radius: 0.15, colorscheme: 'greenCarbon'}, sphere: {radius: 0.4, colorscheme: 'Jmol'}}; break;
+                    case 'sphere': ligStyle = {sphere: {colorscheme: 'Jmol'}}; break;
+                    default: ligStyle = {stick: {radius: 0.25, colorscheme: 'greenCarbon'}};
+                }
+                viewer.setStyle({model: model}, ligStyle);
+                ligandModels[key] = model;
+            }
+        } catch(e) { console.error("Failed to load pose:", e); }
+    }
+
+    // Load interaction data
+    const intFile = `results/pocket_${result.pocket_rank}_pose_${result.pose_rank}_interactions.json`;
+    try {
+        const resp = await fetch(API_BASE + "/files/" + intFile);
+        if (resp.ok) {
+            currentInteractions = await resp.json();
+        } else {
+            currentInteractions = null;
+        }
+    } catch(e) {
+        currentInteractions = null;
+    }
+
+    // Show pocket residues as sticks within 5A of ligand
+    if (proteinModel !== null && ligandModels[key]) {
+        if (showPocketResidues) {
+            const pSpec = getProteinReprSpec();
+            viewer.setStyle(
+                {model: proteinModel, within: {distance: 5, sel: {model: ligandModels[key]}}},
+                {stick: {radius: 0.15, colorscheme: 'Jmol'}, ...pSpec}
+            );
+        }
+        if (showLabels) {
+            drawResidueLabels();
+        }
+    }
+
+    // Draw interaction lines in 3D
+    if (currentInteractions) {
+        drawInteractions3D(currentInteractions);
+    }
+
+    // Re-apply surfaces if they were toggled on
+    rebuildSurfaces();
+
+    // Update pose info panel
+    const infoDiv = document.getElementById('pose-info');
+    const details = document.getElementById('pose-details');
+    infoDiv.style.display = 'block';
+    details.innerHTML = `
+        <div><dt class="text-gray-500 text-xs">Pocket</dt><dd class="font-medium">#${result.pocket_rank}</dd></div>
+        <div><dt class="text-gray-500 text-xs">Pose</dt><dd class="font-medium">#${result.pose_rank}</dd></div>
+        <div><dt class="text-gray-500 text-xs">Affinity</dt><dd class="font-semibold text-green-700">${result.affinity.toFixed(2)} kcal/mol</dd></div>
+        <div><dt class="text-gray-500 text-xs">Pocket Prob.</dt><dd class="font-medium">${(result.pocket_probability * 100).toFixed(1)}%</dd></div>
+        <div><dt class="text-gray-500 text-xs">RMSD LB</dt><dd class="font-medium">${result.rmsd_lb.toFixed(2)}</dd></div>
+        <div><dt class="text-gray-500 text-xs">RMSD UB</dt><dd class="font-medium">${result.rmsd_ub.toFixed(2)}</dd></div>
+        <div class="col-span-2"><dt class="text-gray-500 text-xs">Combined Score</dt><dd class="font-bold text-lg text-blue-600">${result.combined_score.toFixed(3)}</dd></div>
+    `;
+    if (result.ligand_efficiency) {
+        const le = result.ligand_efficiency;
+        const leClass = le > 0.3 ? 'text-green-600' : le > 0.2 ? 'text-yellow-600' : 'text-gray-500';
+        const leLabel = le > 0.3 ? 'Good' : le > 0.2 ? 'Moderate' : 'Poor';
+        details.innerHTML += `<div class="col-span-2"><dt class="text-gray-500 text-xs">Ligand Efficiency</dt><dd class="font-semibold ${leClass}">${le.toFixed(3)} kcal/mol/HA <span class="text-xs font-normal">(${leLabel})</span></dd></div>`;
+    }
+
+    const aff = result.affinity;
+    const kdM = Math.exp((aff * 1000) / (1.987 * 298.15));
+    let kdStr, affLabel, affClass;
+    if (kdM < 1e-9)      { kdStr = (kdM * 1e12).toFixed(1) + ' pM'; }
+    else if (kdM < 1e-6) { kdStr = (kdM * 1e9).toFixed(1) + ' nM'; }
+    else if (kdM < 1e-3) { kdStr = (kdM * 1e6).toFixed(0) + ' \u00B5M'; }
+    else                 { kdStr = (kdM * 1e3).toFixed(1) + ' mM'; }
+    if (aff <= -10)     { affLabel = 'Very Strong'; affClass = 'bg-green-100 text-green-800'; }
+    else if (aff <= -8) { affLabel = 'Strong';      affClass = 'bg-green-50 text-green-700'; }
+    else if (aff <= -6) { affLabel = 'Moderate';    affClass = 'bg-yellow-50 text-yellow-700'; }
+    else if (aff <= -4) { affLabel = 'Weak';        affClass = 'bg-orange-50 text-orange-700'; }
+    else                { affLabel = 'Very Weak';   affClass = 'bg-red-50 text-red-700'; }
+    details.innerHTML += `<div class="col-span-2"><dt class="text-gray-500 text-xs">Binding Strength</dt><dd><span class="inline-block px-2 py-0.5 rounded text-xs font-semibold ${affClass}">${affLabel} (~${kdStr})</span></dd></div>`;
+
+    // Update interaction badges, summary, and table
+    renderInteractionBadges(currentInteractions);
+    renderInteractionTable(currentInteractions);
+    renderInteractionSummary(currentInteractions, result.affinity);
+
+    // Render 2D interaction diagram from already-loaded interaction data
+    render2DInteractionMap(currentInteractions);
+
+    // Zoom to ligand binding site
+    if (ligandModels[key]) {
+        viewer.zoomTo({model: ligandModels[key]}, 800);
+    }
+
+    setupAtomInspect();
+    viewer.render();
+}
+
+function clearPoseVisuals() {
+    document.getElementById('atom-inspect-panel').style.display = 'none';
+    inspectHighlight = null;
+    viewer.removeAllModels();
+    viewer.removeAllShapes();
+    viewer.removeAllLabels();
+    viewer.removeAllSurfaces();
+
+    ligandModels = {};
+    drawnShapes = [];
+    drawnDistLabels = [];
+    drawnLabels = [];
+    pocketSurfaceHandle = null;
+    proteinSurfaceHandle = null;
+
+    // Re-add protein from cached data (no network request)
+    if (proteinDataCache) {
+        proteinModel = viewer.addModel(proteinDataCache, proteinFmtCache);
+        viewer.setStyle({model: proteinModel}, getProteinReprSpec());
+    }
+}
+
+function redrawPose() {
+    if (!activePoseKey) { viewer.render(); return; }
+    const result = allResults.find(r => `p${r.pocket_rank}_pose${r.pose_rank}` === activePoseKey);
+    if (result) selectPose(result, activePoseKey);
+}
+
+// ── 3D Interaction Visualization ──
+
+function drawInteractions3D(interactions) {
+    if (!interactions) return;
+
+    const types = ['hydrogen_bonds', 'hydrophobic', 'salt_bridges', 'pi_stacking', 'pi_cation', 'halogen_bonds'];
+    types.forEach(type => {
+        if (!interactionToggles[type]) return;
+        const items = interactions[type] || [];
+        const color = INTERACTION_COLORS[type];
+
+        items.forEach(item => {
+            if (item.protein_coords && item.protein_coords.length === 3 &&
+                item.ligand_coords && item.ligand_coords.length === 3) {
+                const p = item.protein_coords, l = item.ligand_coords;
+                const isNear = item._nearMiss;
+                const shape = viewer.addCylinder({
+                    start: {x: p[0], y: p[1], z: p[2]},
+                    end: {x: l[0], y: l[1], z: l[2]},
+                    radius: isNear ? 0.03 : 0.06,
+                    color: color,
+                    opacity: isNear ? 0.35 : 1.0,
+                    dashed: true,
+                    dashLength: isNear ? 0.15 : 0.25,
+                    gapLength: isNear ? 0.25 : 0.15,
+                    fromCap: 2,
+                    toCap: 2,
+                });
+                drawnShapes.push(shape);
+
+                if (item.distance && showDistances) {
+                    const mid = {x: (p[0]+l[0])/2, y: (p[1]+l[1])/2, z: (p[2]+l[2])/2};
+                    const dl = viewer.addLabel(item.distance.toFixed(1)+' A', {
+                        position: mid,
+                        fontSize: 9,
+                        fontColor: color,
+                        backgroundColor: '#ffffffcc',
+                        backgroundOpacity: 0.75,
+                        borderRadius: 3,
+                        padding: 2,
+                        inFront: true,
+                    });
+                    drawnDistLabels.push(dl);
+                }
+            }
+        });
+    });
+}
+
+function setupAtomInspect() {
+    if (!viewer || !activePoseKey || !ligandModels[activePoseKey]) return;
+    const model = ligandModels[activePoseKey];
+    viewer.setClickable({model: model}, true, function(atom) {
+        showAtomInspectPanel(atom);
+    });
+}
+
+function clearInspectHighlight() {
+    if (inspectHighlight) { viewer.removeShape(inspectHighlight); inspectHighlight = null; viewer.render(); }
+}
+
+function showAtomInspectPanel(atom) {
+    const panel = document.getElementById('atom-inspect-panel');
+    clearInspectHighlight();
+    if (!atom || !currentInteractions) { panel.style.display = 'none'; return; }
+
+    inspectHighlight = viewer.addSphere({
+        center: {x: atom.x, y: atom.y, z: atom.z},
+        radius: 0.45,
+        color: '#ff6600',
+        opacity: 0.4,
+    });
+    viewer.render();
+
+    const nearby = currentInteractions.nearby_residues || [];
+    const atomEntry = nearby.find(n => {
+        const lc = n.ligand_coords;
+        return Math.abs(lc[0] - atom.x) < 0.01 && Math.abs(lc[1] - atom.y) < 0.01 && Math.abs(lc[2] - atom.z) < 0.01;
+    });
+    const atomId = atomEntry ? atomEntry.ligand_atom_id : (atom.atom || atom.elem || '?');
+    const atomElem = atomEntry ? atomEntry.ligand_element : (atom.elem || '?');
+
+    const filtered = filterInteractions(currentInteractions);
+    const myInteractions = [];
+    const types = ['hydrogen_bonds','hydrophobic','salt_bridges','pi_stacking','pi_cation','halogen_bonds'];
+    types.forEach(type => {
+        (filtered[type] || []).forEach(item => {
+            if (item.ligand_coords && Math.abs(item.ligand_coords[0] - atom.x) < 0.5 &&
+                Math.abs(item.ligand_coords[1] - atom.y) < 0.5 && Math.abs(item.ligand_coords[2] - atom.z) < 0.5) {
+                myInteractions.push({type: INTERACTION_LABELS[type], res: item.protein_res, dist: item.distance});
+            }
+        });
+    });
+
+    let html = `<div style="font-weight:600;margin-bottom:6px;color:#1e3a5f;font-size:0.85rem">${atomId} <span style="font-weight:400;color:#6b7280">(${atomElem})</span></div>`;
+
+    if (myInteractions.length > 0) {
+        html += '<div style="margin-bottom:6px"><span style="font-weight:600;font-size:0.72rem;color:#334155;text-transform:uppercase">Interactions</span></div>';
+        myInteractions.forEach(i => {
+            html += `<div style="display:flex;justify-content:space-between;padding:1px 0"><span>${i.type} \u2014 ${i.res}</span><span style="font-family:monospace;color:#6b7280">${i.dist ? i.dist.toFixed(2)+' \u00C5' : ''}</span></div>`;
+        });
+    } else {
+        html += '<div style="color:#9ca3af;font-style:italic">No detected interactions</div>';
+    }
+
+    if (atomEntry && atomEntry.contacts && atomEntry.contacts.length > 0) {
+        html += '<div style="margin-top:8px;margin-bottom:4px;border-top:1px solid #e5e7eb;padding-top:6px"><span style="font-weight:600;font-size:0.72rem;color:#334155;text-transform:uppercase">Nearby residues</span></div>';
+        atomEntry.contacts.forEach(c => {
+            html += `<div style="display:flex;justify-content:space-between;padding:1px 0"><span>${c.protein_res} ${c.protein_atom}</span><span style="font-family:monospace;color:#6b7280">${c.distance.toFixed(2)} \u00C5</span></div>`;
+        });
+    }
+
+    html += `<div style="margin-top:8px;text-align:right"><button onclick="document.getElementById('atom-inspect-panel').style.display='none';clearInspectHighlight()" style="font-size:0.7rem;color:#3b82f6;cursor:pointer;background:none;border:none">Close</button></div>`;
+    panel.innerHTML = html;
+    panel.style.display = 'block';
+}
+
+function drawResidueLabels() {
+    if (!proteinModel || !ligandModels[activePoseKey]) return;
+
+    const allAtoms = proteinModel.selectedAtoms({});
+    if (!allAtoms || allAtoms.length === 0) return;
+
+    const ligModel = ligandModels[activePoseKey];
+    const ligAtoms = ligModel.selectedAtoms({});
+    if (!ligAtoms || ligAtoms.length === 0) return;
+
+    // Build set of residues to label from filtered interaction data
+    let targetResidues = null;
+    if (currentInteractions) {
+        const filtered = applyTypeFilter(filterInteractions(currentInteractions));
+        targetResidues = new Set();
+        const types = ['hydrogen_bonds', 'hydrophobic', 'salt_bridges', 'pi_stacking', 'pi_cation', 'halogen_bonds'];
+        types.forEach(type => {
+            (filtered[type] || []).forEach(item => {
+                if (item.protein_res) targetResidues.add(item.protein_res);
+            });
+        });
+    }
+
+    // For each residue, find the atom closest to the ligand for label placement
+    const residueBest = {};
+    allAtoms.forEach(atom => {
+        const resLabel = `${atom.resn}${atom.resi}`;
+
+        if (targetResidues) {
+            if (!targetResidues.has(resLabel)) return;
+        }
+
+        let minDist2 = Infinity;
+        ligAtoms.forEach(la => {
+            const dx = atom.x - la.x, dy = atom.y - la.y, dz = atom.z - la.z;
+            const d2 = dx*dx + dy*dy + dz*dz;
+            if (d2 < minDist2) minDist2 = d2;
+        });
+
+        if (!targetResidues && minDist2 > 25) return;
+
+        if (!residueBest[resLabel] || minDist2 < residueBest[resLabel].dist2) {
+            residueBest[resLabel] = {x: atom.x, y: atom.y, z: atom.z, dist2: minDist2};
+        }
+    });
+
+    // Build residue-to-interaction-type map for coloring (using filtered data)
+    const residueTypeMap = {};
+    if (currentInteractions) {
+        const filteredForColors = filterInteractions(currentInteractions);
+        const priority = ['hydrogen_bonds', 'salt_bridges', 'pi_stacking', 'pi_cation', 'hydrophobic', 'halogen_bonds'];
+        priority.forEach(type => {
+            (filteredForColors[type] || []).forEach(item => {
+                if (item.protein_res && !residueTypeMap[item.protein_res]) {
+                    residueTypeMap[item.protein_res] = type;
+                }
+            });
+        });
+    }
+
+    const LABEL_COLORS = {
+        hydrogen_bonds: {bg: '#b45309', fg: '#ffffff'},
+        hydrophobic:    {bg: '#047857', fg: '#ffffff'},
+        salt_bridges:   {bg: '#be185d', fg: '#ffffff'},
+        pi_stacking:    {bg: '#0e7490', fg: '#ffffff'},
+        pi_cation:      {bg: '#6d28d9', fg: '#ffffff'},
+        halogen_bonds:  {bg: '#b91c1c', fg: '#ffffff'},
+    };
+
+    Object.entries(residueBest).forEach(([resLabel, pos]) => {
+        const itype = residueTypeMap[resLabel];
+        const colors = LABEL_COLORS[itype] || {bg: '#334155', fg: '#ffffff'};
+        const label = viewer.addLabel(resLabel, {
+            position: {x: pos.x, y: pos.y, z: pos.z},
+            fontSize: 11,
+            fontColor: colors.fg,
+            backgroundColor: colors.bg,
+            backgroundOpacity: 0.9,
+            borderRadius: 4,
+            padding: 3,
+        });
+        drawnLabels.push(label);
+    });
+}
+
+// ── Interaction Badges & Table ──
+
+function renderInteractionBadges(interactions) {
+    const container = document.getElementById('interaction-badges');
+    if (!interactions) {
+        container.innerHTML = '<span class="text-sm text-gray-400">No interaction data available</span>';
+        return;
+    }
+    const filtered = applyTypeFilter(filterInteractions(interactions));
+
+    let html = '';
+    const types = ['hydrogen_bonds', 'hydrophobic', 'salt_bridges', 'pi_stacking', 'pi_cation', 'halogen_bonds'];
+    let totalCount = 0;
+
+    types.forEach(type => {
+        const items = filtered[type] || [];
+        const nearCount = items.filter(i => i._nearMiss).length;
+        const solidCount = items.length - nearCount;
+        if (items.length > 0) {
+            totalCount += items.length;
+            const nearSuffix = nearCount > 0 ? ` <span class="text-xs opacity-60">(+${nearCount} near)</span>` : '';
+            html += `<span class="int-badge ${INTERACTION_CSS[type]}">${solidCount} ${INTERACTION_LABELS[type]}${solidCount !== 1 ? 's' : ''}${nearSuffix}</span>`;
+        }
+    });
+
+    if (totalCount === 0) {
+        html = '<span class="text-sm text-gray-400">No interactions detected</span>';
+    }
+    container.innerHTML = html;
+}
+
+function renderInteractionTable(interactions) {
+    const tbody = document.getElementById('interaction-tbody');
+    if (!interactions) {
+        tbody.innerHTML = '<tr><td colspan="6" class="px-3 py-8 text-center text-gray-400 text-sm">No interaction data available</td></tr>';
+        return;
+    }
+    const filtered = applyTypeFilter(filterInteractions(interactions));
+
+    let html = '';
+    const types = ['hydrogen_bonds', 'hydrophobic', 'salt_bridges', 'pi_stacking', 'pi_cation', 'halogen_bonds'];
+
+    types.forEach(type => {
+        const items = filtered[type] || [];
+        items.forEach(item => {
+            const cssClass = INTERACTION_CSS[type];
+            const isNear = item._nearMiss;
+            const rowStyle = isNear ? 'opacity:0.5;font-style:italic' : '';
+            const nearTag = isNear ? ' <span class="text-xs text-gray-400">(near-miss)</span>' : '';
+            html += `<tr class="int-table-row" style="${rowStyle}">
+                <td><span class="int-badge ${cssClass}">${INTERACTION_LABELS[type]}${nearTag}</span></td>
+                <td class="font-medium text-gray-800">${item.protein_res || '-'}</td>
+                <td class="text-gray-600">${item.protein_atom || '-'}</td>
+                <td class="text-gray-600">${item.ligand_atom_id || item.ligand_atom || '-'}</td>
+                <td class="font-mono text-gray-700">${item.distance ? item.distance.toFixed(2) : '-'}</td>
+                <td class="font-mono text-gray-700">${item.angle ? item.angle.toFixed(1) + '&deg;' : '-'}</td>
+            </tr>`;
+        });
+    });
+
+    if (!html) {
+        html = '<tr><td colspan="6" class="px-3 py-8 text-center text-gray-400 text-sm">No interactions detected for this pose</td></tr>';
+    }
+    tbody.innerHTML = html;
+}
+
+function renderInteractionSummary(interactions, affinity) {
+    const el = document.getElementById('interaction-summary');
+    if (!interactions) { el.style.display = 'none'; return; }
+    const filtered = filterInteractions(interactions);
+    const AROMATIC_RES = new Set(['PHE','TYR','TRP','HIS']);
+    const typeLabels = {hydrogen_bonds:'hydrogen bond',hydrophobic:'hydrophobic contact',salt_bridges:'salt bridge',pi_stacking:'pi-stacking',pi_cation:'pi-cation',halogen_bonds:'halogen bond'};
+    const parts = [];
+    const types = ['hydrogen_bonds','hydrophobic','salt_bridges','pi_stacking','pi_cation','halogen_bonds'];
+    const aromaticResidues = new Set();
+    const missingTypes = [];
+
+    types.forEach(type => {
+        const items = filtered[type] || [];
+        if (items.length === 0) { missingTypes.push(typeLabels[type]+'s'); return; }
+        const residues = [...new Set(items.map(i => i.protein_res))];
+        const ligAtoms = [...new Set(items.map(i => i.ligand_atom_id || i.ligand_atom).filter(Boolean))];
+        const label = typeLabels[type] + (items.length > 1 ? 's' : '');
+        let sentence = `<strong>${items.length}</strong> ${label} with ${residues.join(', ')}`;
+        if (ligAtoms.length > 0 && ligAtoms[0] !== '-') sentence += ` (ligand ${ligAtoms.join(', ')})`;
+        parts.push(sentence + '.');
+        residues.forEach(r => { const rn = r.replace(/\d+/g,''); if (AROMATIC_RES.has(rn)) aromaticResidues.add(r); });
+    });
+
+    if (parts.length === 0) { el.style.display = 'none'; return; }
+
+    let text = parts.join(' ');
+    if (missingTypes.length > 0) text += ` No ${missingTypes.join(' or ')} detected.`;
+    if (aromaticResidues.size > 0) text += ` Aromatic residues involved: ${[...aromaticResidues].join(', ')}.`;
+
+    if (affinity != null) {
+        const kdM = Math.exp((affinity * 1000) / (1.987 * 298.15));
+        let kdStr;
+        if (kdM < 1e-9)      kdStr = (kdM * 1e12).toFixed(1) + ' pM';
+        else if (kdM < 1e-6) kdStr = (kdM * 1e9).toFixed(1) + ' nM';
+        else if (kdM < 1e-3) kdStr = (kdM * 1e6).toFixed(0) + ' \u00B5M';
+        else                 kdStr = (kdM * 1e3).toFixed(1) + ' mM';
+        let label;
+        if (affinity <= -10)     label = 'Very Strong';
+        else if (affinity <= -8) label = 'Strong';
+        else if (affinity <= -6) label = 'Moderate';
+        else if (affinity <= -4) label = 'Weak';
+        else                     label = 'Very Weak';
+        text += ` Binding: ${affinity.toFixed(1)} kcal/mol (${label}, ~${kdStr}).`;
+    }
+
+    el.innerHTML = text;
+    el.style.display = 'block';
+}
+
+// ── 2D Interaction Map (SVG) ──
+
+function render2DInteractionMap(interactions) {
+    const wrap = document.getElementById('lignet-svg-wrap');
+    const placeholder = document.getElementById('lignet-placeholder');
+
+    if (!interactions) {
+        wrap.style.display = 'none';
+        placeholder.style.display = '';
+        placeholder.textContent = 'No interaction data available';
+        return;
+    }
+    const filtered = applyTypeFilter(filterInteractions(interactions));
+
+    const INT_COLORS_2D = {
+        hydrogen_bonds: {fill: '#fef9c3', stroke: '#eab308', text: '#78350f'},
+        hydrophobic: {fill: '#d1fae5', stroke: '#22c55e', text: '#064e3b'},
+        salt_bridges: {fill: '#fce7f3', stroke: '#ec4899', text: '#831843'},
+        pi_stacking: {fill: '#cffafe', stroke: '#06b6d4', text: '#164e63'},
+        pi_cation: {fill: '#ede9fe', stroke: '#8b5cf6', text: '#4c1d95'},
+        halogen_bonds: {fill: '#fee2e2', stroke: '#ef4444', text: '#7f1d1d'},
+    };
+
+    const residueMap = {};
+    const types = ['hydrogen_bonds', 'hydrophobic', 'salt_bridges', 'pi_stacking', 'pi_cation', 'halogen_bonds'];
+    types.forEach(type => {
+        (filtered[type] || []).forEach(item => {
+            const res = item.protein_res;
+            if (!res) return;
+            if (!residueMap[res]) residueMap[res] = {types: new Set(), distances: [], count: 0};
+            residueMap[res].types.add(type);
+            residueMap[res].count++;
+            if (item.distance) residueMap[res].distances.push(item.distance);
+        });
+    });
+
+    const residues = Object.keys(residueMap);
+    if (residues.length === 0) {
+        wrap.style.display = 'none';
+        placeholder.style.display = '';
+        placeholder.textContent = 'No interactions detected for this pose';
+        return;
+    }
+
+    placeholder.style.display = 'none';
+    wrap.style.display = 'flex';
+
+    const W = 560, H = 520;
+    const cx = W / 2, cy = H / 2 - 15;
+    const radius = Math.min(W, H) / 2 - 75;
+    const nodeR = 28;
+
+    let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" style="width:100%;max-height:520px;">`;
+    svg += `<rect width="${W}" height="${H}" fill="#fafbfc" rx="8"/>`;
+
+    // Draw lines from center to each residue -- separate line per type, offset
+    residues.forEach((res, i) => {
+        const angle = (i / residues.length) * 2 * Math.PI - Math.PI / 2;
+        const x = cx + radius * Math.cos(angle);
+        const y = cy + radius * Math.sin(angle);
+        const info = residueMap[res];
+        const typeArr = [...info.types];
+
+        typeArr.forEach((type, ti) => {
+            const color = INT_COLORS_2D[type]?.stroke || '#94a3b8';
+            const offset = (ti - (typeArr.length - 1) / 2) * 3;
+            const perpAngle = angle + Math.PI / 2;
+            const ox = offset * Math.cos(perpAngle);
+            const oy = offset * Math.sin(perpAngle);
+            const dasharray = type === 'hydrogen_bonds' ? '6,3' : type === 'hydrophobic' ? '' : '4,4';
+            const strokeW = type === 'hydrogen_bonds' ? 2.5 : 1.8;
+            svg += `<line x1="${cx+ox}" y1="${cy+oy}" x2="${x+ox}" y2="${y+oy}" stroke="${color}" stroke-width="${strokeW}" stroke-dasharray="${dasharray}" opacity="0.55"/>`;
+        });
+    });
+
+    // Center ligand node
+    svg += `<circle cx="${cx}" cy="${cy}" r="34" fill="#dbeafe" stroke="#3b82f6" stroke-width="2"/>`;
+    svg += `<text x="${cx}" y="${cy - 6}" text-anchor="middle" font-size="11" font-weight="700" fill="#1e40af">Ligand</text>`;
+    svg += `<text x="${cx}" y="${cy + 10}" text-anchor="middle" font-size="9" fill="#3b82f6">${residues.length} contacts</text>`;
+
+    // Draw residue nodes with concentric rings for multi-type
+    const priority = ['hydrogen_bonds', 'salt_bridges', 'pi_stacking', 'pi_cation', 'hydrophobic', 'halogen_bonds'];
+    residues.forEach((res, i) => {
+        const angle = (i / residues.length) * 2 * Math.PI - Math.PI / 2;
+        const x = cx + radius * Math.cos(angle);
+        const y = cy + radius * Math.sin(angle);
+        const info = residueMap[res];
+        const sortedTypes = priority.filter(t => info.types.has(t));
+
+        if (sortedTypes.length > 1) {
+            // Outer ring = secondary types
+            const outerR = nodeR + 4;
+            for (let ti = sortedTypes.length - 1; ti >= 1; ti--) {
+                const c = INT_COLORS_2D[sortedTypes[ti]];
+                const ringR = nodeR + 4 * (sortedTypes.length - ti) / sortedTypes.length;
+                svg += `<circle cx="${x}" cy="${y}" r="${ringR + 2}" fill="none" stroke="${c.stroke}" stroke-width="3" opacity="0.6"/>`;
+            }
+        }
+
+        const primary = sortedTypes[0] || 'hydrophobic';
+        const c = INT_COLORS_2D[primary];
+        const avgDist = info.distances.length > 0
+            ? (info.distances.reduce((a,b) => a+b, 0) / info.distances.length).toFixed(1) : '';
+
+        svg += `<circle cx="${x}" cy="${y}" r="${nodeR}" fill="${c.fill}" stroke="${c.stroke}" stroke-width="2"/>`;
+        svg += `<text x="${x}" y="${y - 3}" text-anchor="middle" font-size="10" font-weight="600" fill="${c.text}">${res}</text>`;
+        if (avgDist) {
+            svg += `<text x="${x}" y="${y + 11}" text-anchor="middle" font-size="8" fill="#94a3b8">${avgDist} A</text>`;
+        }
+
+        // Count badge
+        if (info.count > 1) {
+            svg += `<circle cx="${x + nodeR - 4}" cy="${y - nodeR + 4}" r="8" fill="#3b82f6"/>`;
+            svg += `<text x="${x + nodeR - 4}" y="${y - nodeR + 7.5}" text-anchor="middle" font-size="8" font-weight="700" fill="#fff">${info.count}</text>`;
+        }
+    });
+
+    // Legend at bottom
+    const legendItems = [
+        {label: 'H-bond', color: '#eab308'}, {label: 'Hydrophobic', color: '#22c55e'},
+        {label: 'Salt bridge', color: '#ec4899'}, {label: 'Pi-stack', color: '#06b6d4'},
+        {label: 'Pi-cation', color: '#8b5cf6'},
+    ];
+    const legendY = H - 20;
+    const legendStartX = cx - (legendItems.length * 80) / 2;
+    legendItems.forEach((item, i) => {
+        const lx = legendStartX + i * 85;
+        svg += `<circle cx="${lx}" cy="${legendY}" r="5" fill="${item.color}"/>`;
+        svg += `<text x="${lx + 10}" y="${legendY + 4}" font-size="9" fill="#64748b">${item.label}</text>`;
+    });
+
+    svg += '</svg>';
+    wrap.innerHTML = svg;
+}
+
+// ── Fullscreen ──
+
+let sidebarCollapsed = false;
+
+function toggleFullscreen() {
+    const wrapper = document.getElementById('results-wrapper');
+    if (!document.fullscreenElement) {
+        wrapper.requestFullscreen().catch(err => {
+            console.warn('Fullscreen request failed:', err);
+        });
+    } else {
+        document.exitFullscreen();
+    }
+}
+
+document.addEventListener('fullscreenchange', () => {
+    const wrapper = document.getElementById('results-wrapper');
+    const isFs = !!document.fullscreenElement;
+    wrapper.classList.toggle('fullscreen-active', isFs);
+
+    document.getElementById('fs-icon-expand').style.display = isFs ? 'none' : '';
+    document.getElementById('fs-icon-collapse').style.display = isFs ? '' : 'none';
+    document.getElementById('btn-fullscreen').classList.toggle('active', isFs);
+
+    // Clone pocket badges into fullscreen sidebar
+    if (isFs) {
+        const src = document.getElementById('pocket-badges');
+        const dest = document.getElementById('pocket-badges-fs');
+        dest.innerHTML = src.innerHTML;
+    }
+
+    // Reset sidebar state on exit
+    if (!isFs) {
+        sidebarCollapsed = false;
+        document.getElementById('results-grid').classList.remove('sidebar-collapsed');
+        document.getElementById('sidebar-chevron').style.transform = '';
+    }
+
+    setTimeout(() => {
+        viewer.resize();
+        viewer.render();
+    }, 150);
+});
+
+function toggleSidebar() {
+    sidebarCollapsed = !sidebarCollapsed;
+    document.getElementById('results-grid').classList.toggle('sidebar-collapsed', sidebarCollapsed);
+    document.getElementById('sidebar-chevron').style.transform = sidebarCollapsed ? 'rotate(180deg)' : '';
+    setTimeout(() => {
+        viewer.resize();
+        viewer.render();
+    }, 250);
+}
+
+// ── CSV Download ──
+
+function downloadCSV() {
+    let csv = "pocket_rank,pocket_probability,pose_rank,affinity_kcal_mol,rmsd_lb,rmsd_ub,combined_score\n";
+    allResults.forEach(r => {
+        csv += `${r.pocket_rank},${r.pocket_probability.toFixed(4)},${r.pose_rank},${r.affinity.toFixed(2)},${r.rmsd_lb.toFixed(2)},${r.rmsd_ub.toFixed(2)},${r.combined_score.toFixed(4)}\n`;
+    });
+    const blob = new Blob([csv], {type: 'text/csv'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `pocketdock_results_job_${JOB_ID}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+}
+</script>
+{% endblock %}

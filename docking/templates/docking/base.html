@@ -1,0 +1,70 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}PocketDock{% endblock %}</title>
+    <link rel="icon" type="image/svg+xml" href="{% static 'favicon.svg' %}">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://3Dmol.org/build/3Dmol-min.js"></script>
+    <style>
+        @keyframes pulse-slow {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        .animate-pulse-slow { animation: pulse-slow 2s ease-in-out infinite; }
+
+        @keyframes progress-bar {
+            0% { width: 0%; }
+            100% { width: 100%; }
+        }
+
+        .step-active {
+            background: linear-gradient(90deg, #3b82f6, #8b5cf6);
+            color: white;
+        }
+        .step-done {
+            background: #10b981;
+            color: white;
+        }
+        .step-pending {
+            background: #e5e7eb;
+            color: #6b7280;
+        }
+    </style>
+    {% block extra_head %}{% endblock %}
+</head>
+<body class="h-full bg-gray-50">
+    <nav class="bg-white shadow-sm border-b border-gray-200">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16 items-center">
+                <a href="{% url 'docking:upload' %}" class="flex items-center space-x-2">
+                    <div class="w-8 h-8 rounded-lg flex items-center justify-center overflow-hidden">
+                        <svg viewBox="0 0 64 64" class="w-8 h-8">
+                            <defs><linearGradient id="nav-g" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#3b82f6"/><stop offset="100%" stop-color="#06b6d4"/></linearGradient></defs>
+                            <rect width="64" height="64" rx="14" fill="url(#nav-g)"/>
+                            <path d="M16 18 C16 18 14 32 18 40 C22 48 30 50 32 50 C34 50 42 48 46 40 C50 32 48 18 48 18" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" opacity="0.5"/>
+                            <circle cx="28" cy="28" r="5" fill="white" opacity="0.95"/>
+                            <circle cx="40" cy="24" r="4" fill="white" opacity="0.75"/>
+                            <circle cx="30" cy="40" r="4" fill="white" opacity="0.75"/>
+                            <line x1="28" y1="28" x2="40" y2="24" stroke="white" stroke-width="2" opacity="0.6"/>
+                            <line x1="28" y1="28" x2="30" y2="40" stroke="white" stroke-width="2" opacity="0.6"/>
+                        </svg>
+                    </div>
+                    <span class="text-xl font-bold text-gray-900">PocketDock</span>
+                </a>
+                <div class="text-sm text-gray-500">
+                    P2Rank + AutoDock Vina
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <main class="flex-1">
+        {% block content %}{% endblock %}
+    </main>
+
+    {% block extra_js %}{% endblock %}
+</body>
+</html>

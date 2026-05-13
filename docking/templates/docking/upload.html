@@ -1,0 +1,161 @@
+{% extends "docking/base.html" %}
+{% block title %}PocketDock - Upload{% endblock %}
+
+{% block content %}
+<div class="max-w-3xl mx-auto px-4 py-12">
+    <div class="text-center mb-10">
+        <h1 class="text-4xl font-bold text-gray-900 mb-3">Molecular Docking Pipeline</h1>
+        <p class="text-lg text-gray-600">
+            Upload a protein structure and a compound to run automated pocket detection and docking.
+        </p>
+    </div>
+
+    <form method="post" enctype="multipart/form-data" class="space-y-8" id="upload-form">
+        {% csrf_token %}
+
+        <!-- Job Name -->
+        <div>
+            <label for="id_name" class="block text-sm font-semibold text-gray-700 mb-1">
+                Job Name <span class="text-gray-400 font-normal">(optional)</span>
+            </label>
+            {{ form.name }}
+            {% if form.name.errors %}
+            <p class="mt-1 text-sm text-red-600">{{ form.name.errors.0 }}</p>
+            {% endif %}
+        </div>
+
+        <!-- File Uploads -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <!-- Protein Upload -->
+            <div>
+                <label class="block text-sm font-semibold text-gray-700 mb-2">Protein Structure</label>
+                <div id="protein-drop-zone"
+                     class="relative border-2 border-dashed border-gray-300 rounded-xl p-8 text-center
+                            hover:border-blue-400 hover:bg-blue-50 transition-all cursor-pointer"
+                     onclick="document.getElementById('protein-file-input').click()">
+                    <svg class="mx-auto h-12 w-12 text-gray-400 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                              d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+                    </svg>
+                    <p class="text-sm text-gray-600 mb-1" id="protein-label">Drop PDB/CIF file or click to browse</p>
+                    <p class="text-xs text-gray-400">.pdb, .pdb.gz, .cif</p>
+                    {{ form.protein_file }}
+                </div>
+                {% if form.protein_file.errors %}
+                <p class="mt-1 text-sm text-red-600">{{ form.protein_file.errors.0 }}</p>
+                {% endif %}
+            </div>
+
+            <!-- Ligand Upload -->
+            <div>
+                <label class="block text-sm font-semibold text-gray-700 mb-2">Compound / Ligand</label>
+                <div id="ligand-drop-zone"
+                     class="relative border-2 border-dashed border-gray-300 rounded-xl p-8 text-center
+                            hover:border-purple-400 hover:bg-purple-50 transition-all cursor-pointer"
+                     onclick="document.getElementById('ligand-file-input').click()">
+                    <svg class="mx-auto h-12 w-12 text-gray-400 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                              d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                    </svg>
+                    <p class="text-sm text-gray-600 mb-1" id="ligand-label">Drop SDF/MOL2 file or click to browse</p>
+                    <p class="text-xs text-gray-400">.sdf, .mol2, .mol</p>
+                    {{ form.ligand_file }}
+                </div>
+                {% if form.ligand_file.errors %}
+                <p class="mt-1 text-sm text-red-600">{{ form.ligand_file.errors.0 }}</p>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Parameters -->
+        <div class="bg-white rounded-xl border border-gray-200 p-6">
+            <h3 class="text-sm font-semibold text-gray-700 mb-4">Docking Parameters</h3>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                    <label for="id_num_pockets" class="block text-sm text-gray-600 mb-1">
+                        Number of Pockets to Dock
+                    </label>
+                    {{ form.num_pockets }}
+                    <p class="mt-1 text-xs text-gray-400">Top N pockets from P2Rank (1-20)</p>
+                </div>
+                <div>
+                    <label for="id_exhaustiveness" class="block text-sm text-gray-600 mb-1">
+                        Vina Exhaustiveness
+                    </label>
+                    {{ form.exhaustiveness }}
+                    <p class="mt-1 text-xs text-gray-400">Higher = more thorough but slower (1-64)</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Submit -->
+        <div class="flex justify-center">
+            <button type="submit" id="submit-btn"
+                    class="px-8 py-3 bg-gradient-to-r from-blue-500 to-purple-600 text-white font-semibold
+                           rounded-xl shadow-lg hover:shadow-xl transform hover:-translate-y-0.5
+                           transition-all duration-200 text-lg">
+                Start Docking Pipeline
+            </button>
+        </div>
+
+        {% if form.non_field_errors %}
+        <div class="bg-red-50 border border-red-200 rounded-lg p-4">
+            {% for error in form.non_field_errors %}
+            <p class="text-sm text-red-600">{{ error }}</p>
+            {% endfor %}
+        </div>
+        {% endif %}
+    </form>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    function setupDropZone(zoneId, inputId, labelId) {
+        const zone = document.getElementById(zoneId);
+        const input = document.getElementById(inputId);
+        const label = document.getElementById(labelId);
+
+        ['dragenter', 'dragover'].forEach(evt => {
+            zone.addEventListener(evt, e => {
+                e.preventDefault();
+                zone.classList.add('border-blue-400', 'bg-blue-50');
+            });
+        });
+        ['dragleave', 'drop'].forEach(evt => {
+            zone.addEventListener(evt, e => {
+                e.preventDefault();
+                zone.classList.remove('border-blue-400', 'bg-blue-50');
+            });
+        });
+
+        zone.addEventListener('drop', e => {
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                input.files = files;
+                label.textContent = files[0].name;
+                label.classList.add('text-blue-600', 'font-medium');
+            }
+        });
+
+        input.addEventListener('change', () => {
+            if (input.files.length > 0) {
+                label.textContent = input.files[0].name;
+                label.classList.add('text-blue-600', 'font-medium');
+            }
+        });
+    }
+
+    setupDropZone('protein-drop-zone', 'protein-file-input', 'protein-label');
+    setupDropZone('ligand-drop-zone', 'ligand-file-input', 'ligand-label');
+
+    document.getElementById('upload-form').addEventListener('submit', function() {
+        const btn = document.getElementById('submit-btn');
+        btn.disabled = true;
+        btn.textContent = 'Submitting...';
+        btn.classList.add('opacity-50');
+    });
+});
+</script>
+{% endblock %}
