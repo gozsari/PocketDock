@@ -75,6 +75,30 @@ In fullscreen mode the results sidebar slides out of view; click the chevron at 
 
 ![Viewer in fullscreen mode](../images/3d-viewer-fullscreen.png)
 
+## Recording video
+
+Two buttons in the viewer toolbar let you save short video clips of the 3D scene — useful for slide decks, papers, or sharing a binding-mode story over chat.
+
+| Button | What it does |
+|--------|--------------|
+| **● Record** | Toggle. Click to start recording the canvas; click again (now labeled **■ Stop**) to finish. Interact freely while recording — rotation, zoom, pose switches, toggling interaction overlays are all captured. |
+| **Turntable** | One-click 360° rotation around the vertical axis over ~20 seconds, then auto-stops and saves. Best for figures showing how a ligand sits in a pocket from all angles. |
+
+A red **● REC 0:nn** badge in the top-left of the viewer shows recording is live. Turntable mode also shows a thin progress bar across the bottom of the viewer.
+
+### Output format
+
+Recordings are saved as **WebM** in Chrome, Firefox, and Edge (VP9 or VP8 codec). Safari 14.1+ saves as **MP4** natively. Either plays in browsers, Slack, Discord, VLC, and modern PowerPoint/Keynote.
+
+If you need MP4 specifically (older Office, certain journal submission systems), convert the WebM locally with VLC's **Convert/Save** menu or `ffmpeg -i input.webm -c:v libx264 output.mp4`.
+
+### Tips for good recordings
+
+- **Maximize the browser window or hit Fullscreen first.** Recording captures whatever pixel size the canvas currently has — bigger window = sharper video.
+- **Set up your view before clicking Record.** Toggle Cartoon, Pocket Residues, Distances, and any interaction types you want shown so the recording starts in the right state.
+- **For pose comparisons**, start a manual recording, click between rows in the results table, and let the viewer load each pose for ~2 seconds before switching.
+- **File sizes**: a 20-second turntable at 720p is 8–16 MB; a 30-second manual recording is 12–25 MB. The encoder runs on the GPU where supported, so CPU impact during recording is small.
+
 ## Switching poses
 
 Click any row in the results table to load that pose. The previous ligand model is removed and the new one is loaded from `/api/jobs/<job_id>/files/<pose_file>` — the camera does not reset automatically (use **Reset view** if you want to refit). Loaded poses are cached in the browser, so flipping back and forth between poses you've already viewed is instantaneous.

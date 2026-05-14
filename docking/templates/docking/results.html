@@ -144,6 +144,51 @@
     .fullscreen-active .fs-sidebar .fs-pocket-inline { display: block !important; }
     .fullscreen-active .fs-viewer-card { border-radius: 0 !important; border: none !important; }
 
+    /* Recording badge overlay */
+    .recording-badge {
+        position: absolute;
+        top: 10px;
+        left: 10px;
+        z-index: 30;
+        display: none;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 10px;
+        background: rgba(15, 23, 42, 0.85);
+        color: #fff;
+        border-radius: 999px;
+        font-family: 'SF Mono', 'Fira Code', monospace;
+        font-size: 0.72rem;
+        font-weight: 600;
+    }
+    .recording-badge.visible { display: inline-flex; }
+    .recording-badge .rec-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #ef4444;
+        animation: rec-pulse 1.2s ease-in-out infinite;
+    }
+    @keyframes rec-pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.3; }
+    }
+    .turntable-progress {
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        height: 3px;
+        background: linear-gradient(90deg, #ef4444, #f97316);
+        width: 0%;
+        z-index: 30;
+        transition: width 0.05s linear;
+    }
+    #btn-record.recording {
+        background: #fef2f2;
+        border-color: #ef4444;
+        color: #b91c1c;
+    }
+
 </style>
 {% endblock %}
 
@@ -182,6 +227,8 @@
                 <div id="panel-viewer3d">
                     <div id="viewer-container" style="position:relative;">
                         <div id="atom-inspect-panel" style="display:none;position:absolute;top:10px;right:10px;z-index:60;width:260px;max-height:300px;overflow-y:auto;background:#fff;border:1px solid #e2e8f0;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.15);padding:10px 12px;font-size:0.78rem;"></div>
+                        <div id="recording-badge" class="recording-badge"><span class="rec-dot"></span><span id="recording-timer">REC 0:00</span></div>
+                        <div id="turntable-progress" class="turntable-progress" style="display:none;"></div>
                     </div>
                     <div class="px-4 py-3 border-t border-gray-100 flex flex-wrap items-center gap-2">
                         <button class="viewer-control-btn" id="btn-cartoon" onclick="toggleCartoon()">Protein Cartoon</button>
@@ -211,6 +258,8 @@
                         <div class="flex-1"></div>
                         <button onclick="resetView()" class="text-xs text-blue-500 hover:text-blue-700 font-medium">Reset View</button>
                         <button onclick="savePNG()" class="viewer-control-btn" title="Save as PNG">PNG</button>
+                        <button onclick="toggleRecording()" id="btn-record" class="viewer-control-btn" title="Record video — click again to stop">&#9679; Record</button>
+                        <button onclick="startRecording('turntable')" id="btn-turntable" class="viewer-control-btn" title="20s 360&deg; rotation, auto-saves">Turntable</button>
                         <button onclick="toggleFullscreen()" class="viewer-control-btn" id="btn-fullscreen" title="Toggle fullscreen">
                             <svg id="fs-icon-expand" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
                             <svg id="fs-icon-collapse" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none"><polyline points="4 14 10 14 10 20"/><polyline points="20 10 14 10 14 4"/><line x1="14" y1="10" x2="21" y2="3"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
@@ -856,6 +905,195 @@ function savePNG() {
     a.download = `pocketdock_job${JOB_ID}_${activePoseKey || 'view'}.png`;
     a.click();
 }
+
+// ============================================================
+// Video recording — MediaRecorder + canvas.captureStream()
+// ============================================================
+const TURNTABLE_DURATION_MS = 20000;
+const RECORDING_FPS = 30;
+const RECORDING_BITRATE = 4_000_000;
+
+let mediaRecorder = null;
+let recordedChunks = [];
+let lastRecordingMime = null;
+let lastRecordingExt = 'webm';
+let turntableRAF = null;
+let turntableStartTs = 0;
+let turntableLastAngle = 0;
+let recordingStartedAt = 0;
+let recordingTimerInterval = null;
+
+function getViewerCanvas() {
+    if (viewer && typeof viewer.getCanvas === 'function') {
+        try { return viewer.getCanvas(); } catch (e) { /* fall through */ }
+    }
+    return document.querySelector('#viewer-container canvas');
+}
+
+function pickRecorderMime() {
+    const candidates = [
+        'video/webm;codecs=vp9',
+        'video/webm;codecs=vp8',
+        'video/webm',
+        'video/mp4'
+    ];
+    for (const m of candidates) {
+        if (window.MediaRecorder && MediaRecorder.isTypeSupported(m)) return m;
+    }
+    return '';
+}
+
+function timestampSlug() {
+    const d = new Date();
+    const pad = n => String(n).padStart(2, '0');
+    return `${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
+}
+
+function toggleRecording() {
+    if (mediaRecorder && mediaRecorder.state === 'recording') {
+        stopRecording();
+    } else {
+        startRecording('manual');
+    }
+}
+
+function startRecording(mode) {
+    if (mediaRecorder && mediaRecorder.state === 'recording') return;
+    if (!window.MediaRecorder) {
+        alert('Video recording is not supported in this browser. Try a recent Chrome, Firefox, Edge, or Safari.');
+        return;
+    }
+    const canvas = getViewerCanvas();
+    if (!canvas) {
+        alert('Could not access the 3D viewer canvas.');
+        return;
+    }
+
+    const mime = pickRecorderMime();
+    if (!mime) {
+        alert('No supported video encoder found in this browser.');
+        return;
+    }
+    lastRecordingMime = mime;
+    lastRecordingExt = mime.includes('mp4') ? 'mp4' : 'webm';
+
+    let stream;
+    try {
+        stream = canvas.captureStream(RECORDING_FPS);
+    } catch (e) {
+        alert('Failed to capture canvas stream: ' + e.message);
+        return;
+    }
+
+    try {
+        mediaRecorder = new MediaRecorder(stream, {
+            mimeType: mime,
+            videoBitsPerSecond: RECORDING_BITRATE
+        });
+    } catch (e) {
+        alert('Failed to start MediaRecorder: ' + e.message);
+        return;
+    }
+
+    recordedChunks = [];
+    mediaRecorder.ondataavailable = (e) => {
+        if (e.data && e.data.size > 0) recordedChunks.push(e.data);
+    };
+    mediaRecorder.onstop = saveRecording;
+    mediaRecorder.start(250);
+
+    // UI: badge + button state
+    recordingStartedAt = Date.now();
+    document.getElementById('recording-badge').classList.add('visible');
+    updateRecordingTimer();
+    recordingTimerInterval = setInterval(updateRecordingTimer, 250);
+    const recBtn = document.getElementById('btn-record');
+    recBtn.classList.add('recording');
+    recBtn.innerHTML = '&#9632; Stop';
+    document.getElementById('btn-turntable').disabled = true;
+
+    if (mode === 'turntable') {
+        document.getElementById('turntable-progress').style.display = 'block';
+        document.getElementById('turntable-progress').style.width = '0%';
+        startTurntable();
+    }
+}
+
+function stopRecording() {
+    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+        mediaRecorder.stop();
+    }
+    stopTurntable();
+
+    // UI: clear badge + restore button
+    document.getElementById('recording-badge').classList.remove('visible');
+    document.getElementById('turntable-progress').style.display = 'none';
+    if (recordingTimerInterval) { clearInterval(recordingTimerInterval); recordingTimerInterval = null; }
+    const recBtn = document.getElementById('btn-record');
+    recBtn.classList.remove('recording');
+    recBtn.innerHTML = '&#9679; Record';
+    document.getElementById('btn-turntable').disabled = false;
+}
+
+function updateRecordingTimer() {
+    const elapsed = Math.floor((Date.now() - recordingStartedAt) / 1000);
+    const m = Math.floor(elapsed / 60);
+    const s = elapsed % 60;
+    document.getElementById('recording-timer').textContent =
+        `REC ${m}:${String(s).padStart(2, '0')}`;
+}
+
+function startTurntable() {
+    turntableStartTs = 0;
+    turntableLastAngle = 0;
+    const tick = (ts) => {
+        if (!turntableStartTs) turntableStartTs = ts;
+        const elapsed = ts - turntableStartTs;
+        const targetAngle = Math.min(360, (elapsed / TURNTABLE_DURATION_MS) * 360);
+        const delta = targetAngle - turntableLastAngle;
+        if (delta !== 0) {
+            viewer.rotate(delta, 'y');
+            viewer.render();
+        }
+        turntableLastAngle = targetAngle;
+        document.getElementById('turntable-progress').style.width =
+            `${(elapsed / TURNTABLE_DURATION_MS) * 100}%`;
+
+        if (elapsed < TURNTABLE_DURATION_MS) {
+            turntableRAF = requestAnimationFrame(tick);
+        } else {
+            turntableRAF = null;
+            stopRecording();
+        }
+    };
+    turntableRAF = requestAnimationFrame(tick);
+}
+
+function stopTurntable() {
+    if (turntableRAF) {
+        cancelAnimationFrame(turntableRAF);
+        turntableRAF = null;
+    }
+}
+
+function saveRecording() {
+    if (!recordedChunks.length) return;
+    const blob = new Blob(recordedChunks, { type: lastRecordingMime || 'video/webm' });
+    const filename = `pocketdock_job${JOB_ID}_${activePoseKey || 'view'}_${timestampSlug()}.${lastRecordingExt}`;
+    triggerDownload(blob, filename);
+}
+
+function triggerDownload(blob, filename) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+
 
 function exportInteractionsCSV() {
     if (!currentInteractions) return;
