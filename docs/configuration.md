@@ -18,6 +18,7 @@ All runtime configuration is via environment variables. Set them in `docker-comp
 |----------|---------|-------------|
 | `CELERY_BROKER_URL` | `redis://localhost:6379/0` | Redis URL for the Celery broker |
 | `CELERY_RESULT_BACKEND` | `redis://localhost:6379/0` | Redis URL for Celery task results |
+| `WORKER_CONCURRENCY` | `2` | Number of parallel Celery worker processes — used by the [Queue](user-guide/queue.md) page to compute ETA. **Must match `--concurrency=N` in the celery service's command in `docker-compose.yml`**, otherwise the ETA will be systematically wrong. |
 
 In the bundled [docker-compose.yml](https://github.com/ozsari/pocketdock/blob/main/docker-compose.yml), both default to `redis://redis:6379/0` (the in-network Redis service).
 

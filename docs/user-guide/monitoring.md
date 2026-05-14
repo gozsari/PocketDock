@@ -33,6 +33,14 @@ Below the pipeline indicator, the status page shows the parameters the job was s
 
 These are read-only — to change them, submit a new job.
 
+## Queue position when pending
+
+If your job is still `pending` (not yet picked up by a worker), the status page additionally shows a **Queue position** panel: how many jobs are ahead of yours in line, and an estimated wait until your job starts.
+
+The estimate assumes the worker concurrency configured via `WORKER_CONCURRENCY` (default 2) and uses a rolling average of the last 20 completed jobs as the per-job duration. See [Queue](queue.md) for the full formula and limitations.
+
+The panel disappears as soon as your job moves to a running stage — at that point the pipeline indicator above tells you everything you need.
+
 ## Polling and auto-redirect
 
 The status page reloads itself every 5 seconds (using a meta-refresh, not JavaScript polling — works even with JS disabled). Behind the scenes:

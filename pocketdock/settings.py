@@ -72,6 +72,9 @@ MEDIA_ROOT = BASE_DIR / "media"
 # Celery
 CELERY_BROKER_URL = os.environ.get("CELERY_BROKER_URL", "redis://localhost:6379/0")
 CELERY_RESULT_BACKEND = os.environ.get("CELERY_RESULT_BACKEND", "redis://localhost:6379/0")
+# Number of Celery worker processes (must match --concurrency in docker-compose.yml).
+# Used by the queue page to estimate wait times.
+WORKER_CONCURRENCY = int(os.environ.get("WORKER_CONCURRENCY", "2"))
 CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_SERIALIZER = "json"

@@ -1,0 +1,222 @@
+{% extends "docking/base.html" %}
+{% block title %}PocketDock - Queue{% endblock %}
+
+{% block extra_head %}
+<meta http-equiv="refresh" content="5">
+<style>
+    .status-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 3px 10px;
+        border-radius: 9999px;
+        font-size: 0.7rem;
+        font-weight: 600;
+    }
+    .status-pending    { background: #f1f5f9; color: #475569; }
+    .status-running    { background: #dbeafe; color: #1e40af; }
+    .status-completed  { background: #d1fae5; color: #065f46; }
+    .status-failed     { background: #fee2e2; color: #991b1b; }
+    .status-dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+    }
+    .dot-pending   { background: #94a3b8; }
+    .dot-running   { background: #3b82f6; animation: pulse-slow 1.5s ease-in-out infinite; }
+    .dot-completed { background: #10b981; }
+    .dot-failed    { background: #ef4444; }
+    .queue-row {
+        display: grid;
+        grid-template-columns: 90px 1fr auto auto;
+        gap: 16px;
+        align-items: center;
+        padding: 10px 14px;
+        border-bottom: 1px solid #f1f5f9;
+        font-size: 0.85rem;
+    }
+    .queue-row:last-child { border-bottom: none; }
+    .queue-row .job-id {
+        font-family: 'SF Mono', 'Fira Code', monospace;
+        font-weight: 600;
+        color: #334155;
+    }
+    .queue-row .job-time {
+        color: #64748b;
+        font-size: 0.78rem;
+    }
+    .queue-row .job-position {
+        font-family: 'SF Mono', 'Fira Code', monospace;
+        font-weight: 700;
+        color: #1e40af;
+        background: #eff6ff;
+        padding: 2px 8px;
+        border-radius: 6px;
+        font-size: 0.75rem;
+    }
+    .empty-state {
+        padding: 28px 16px;
+        text-align: center;
+        color: #94a3b8;
+        font-size: 0.85rem;
+    }
+    .summary-tile {
+        background: #fff;
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        padding: 18px 20px;
+        text-align: center;
+    }
+    .summary-tile .number {
+        font-size: 2.2rem;
+        font-weight: 700;
+        line-height: 1;
+        color: #0f172a;
+    }
+    .summary-tile .label {
+        margin-top: 6px;
+        font-size: 0.72rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        color: #64748b;
+    }
+    .section-card {
+        background: #fff;
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        overflow: hidden;
+    }
+    .section-header {
+        padding: 14px 16px;
+        border-bottom: 1px solid #f1f5f9;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+    }
+    .section-header h2 {
+        font-size: 0.95rem;
+        font-weight: 600;
+        color: #0f172a;
+    }
+    .section-header .count {
+        font-size: 0.78rem;
+        color: #64748b;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="max-w-5xl mx-auto px-4 py-8">
+    <div class="mb-6">
+        <h1 class="text-2xl font-bold text-gray-900 mb-1">Server Queue</h1>
+        <p class="text-sm text-gray-500">
+            Public view of the docking queue. Job names and uploaded filenames are hidden.
+            Page auto-refreshes every 5 seconds.
+        </p>
+    </div>
+
+    <!-- Summary tiles -->
+    <div class="grid grid-cols-3 gap-4 mb-6">
+        <div class="summary-tile">
+            <div class="number">{{ pending_count }}</div>
+            <div class="label">In queue</div>
+        </div>
+        <div class="summary-tile">
+            <div class="number">{{ running_count }}</div>
+            <div class="label">Running now</div>
+        </div>
+        <div class="summary-tile">
+            <div class="number">{{ completed_today_count }}</div>
+            <div class="label">Done today</div>
+        </div>
+    </div>
+
+    <!-- Running -->
+    <div class="section-card mb-5">
+        <div class="section-header">
+            <h2>Running now</h2>
+            <span class="count">Worker concurrency: {{ worker_concurrency }}</span>
+        </div>
+        {% if running_jobs %}
+            {% for job in running_jobs %}
+            <div class="queue-row">
+                <span class="job-id">Job #{{ job.id }}</span>
+                <span class="status-badge status-running">
+                    <span class="status-dot dot-running"></span>
+                    {{ job.get_status_display }}
+                </span>
+                <span class="job-time">running for {{ job.created_at|timesince }}</span>
+                <span></span>
+            </div>
+            {% endfor %}
+        {% else %}
+            <div class="empty-state">No jobs currently running.</div>
+        {% endif %}
+    </div>
+
+    <!-- Pending -->
+    <div class="section-card mb-5">
+        <div class="section-header">
+            <h2>Waiting</h2>
+            <span class="count">~{{ avg_duration_seconds }}s avg per job</span>
+        </div>
+        {% if pending_jobs %}
+            {% for job in pending_jobs %}
+            <div class="queue-row">
+                <span class="job-id">Job #{{ job.id }}</span>
+                <span class="status-badge status-pending">
+                    <span class="status-dot dot-pending"></span>
+                    Waiting
+                </span>
+                <span class="job-time">submitted {{ job.created_at|timesince }} ago</span>
+                <span class="job-position">#{{ forloop.counter }}</span>
+            </div>
+            {% endfor %}
+        {% else %}
+            <div class="empty-state">Queue is empty.</div>
+        {% endif %}
+    </div>
+
+    <!-- Recently completed -->
+    <div class="section-card">
+        <div class="section-header">
+            <h2>Recently finished</h2>
+            <span class="count">last 24h</span>
+        </div>
+        {% if recent_jobs %}
+            {% for job in recent_jobs %}
+            <div class="queue-row">
+                <span class="job-id">Job #{{ job.id }}</span>
+                {% if job.status == 'completed' %}
+                <span class="status-badge status-completed">
+                    <span class="status-dot dot-completed"></span>
+                    Completed
+                </span>
+                {% else %}
+                <span class="status-badge status-failed">
+                    <span class="status-dot dot-failed"></span>
+                    Failed
+                </span>
+                {% endif %}
+                <span class="job-time">
+                    finished {{ job.updated_at|timesince }} ago
+                </span>
+                <span class="job-time">
+                    {% with secs=job.updated_at|timeuntil:job.created_at %}
+                    took {{ secs }}
+                    {% endwith %}
+                </span>
+            </div>
+            {% endfor %}
+        {% else %}
+            <div class="empty-state">No jobs finished in the last 24 hours.</div>
+        {% endif %}
+    </div>
+
+    <p class="text-xs text-gray-400 mt-6 text-center">
+        Estimated waits assume {{ worker_concurrency }} concurrent worker{{ worker_concurrency|pluralize }}
+        and ~{{ avg_duration_seconds }}s per job (rolling average of last 20).
+    </p>
+</div>
+{% endblock %}

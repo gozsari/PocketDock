@@ -78,6 +78,7 @@ nav:
   - User Guide:
       - Uploading a Job: user-guide/uploading.md
       - Monitoring Progress: user-guide/monitoring.md
+      - Queue: user-guide/queue.md
       - The Results Page: user-guide/results.md
       - 3D Viewer Controls: user-guide/3d-viewer.md
       - Interaction Analysis: user-guide/interactions.md
