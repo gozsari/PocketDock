@@ -200,6 +200,7 @@
             <h1 class="text-2xl font-bold text-gray-900">{{ job.name|default:"Docking Results" }}</h1>
             <p class="text-sm text-gray-500">
                 Job #{{ job.id }} &middot; {{ job.protein_filename }} + {{ job.ligand_filename }}
+                {% if job.refine_poses %}<span class="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-emerald-100 text-emerald-800">Refined</span>{% endif %}
             </p>
         </div>
         <div class="flex space-x-3">
@@ -393,6 +394,7 @@
 {% block extra_js %}
 <script>
 const JOB_ID = {{ job.id }};
+const JOB_REFINED = {{ job.refine_poses|yesno:"true,false" }};
 const API_BASE = "/api/jobs/" + JOB_ID;
 let viewer = null;
 let proteinModel = null;
@@ -502,18 +504,40 @@ const INTERACTION_CSS = {
 document.addEventListener('DOMContentLoaded', init);
 document.addEventListener('keydown', e => { if (e.key === 'Escape') { document.getElementById('atom-inspect-panel').style.display = 'none'; clearInspectHighlight(); } });
 
+function showErrorBanner(message) {
+    let banner = document.getElementById('error-banner');
+    if (!banner) {
+        banner = document.createElement('div');
+        banner.id = 'error-banner';
+        banner.className = 'bg-red-50 border border-red-200 rounded-lg p-4 mb-4';
+        const wrapper = document.getElementById('results-wrapper');
+        wrapper.insertBefore(banner, wrapper.children[1]);
+    }
+    banner.innerHTML = `<p class="text-sm text-red-700 font-medium">Failed to load results</p><p class="text-sm text-red-600 mt-1">${message}</p>`;
+    banner.style.display = 'block';
+}
+
 async function init() {
     viewer = $3Dmol.createViewer('viewer-container', {
         backgroundColor: '#1a1a2e',
         antialias: true,
     });
 
-    const resultsData = await fetch(API_BASE + "/results/").then(r => r.json());
+    let resultsData;
+    try {
+        const resp = await fetch(API_BASE + "/results/");
+        if (!resp.ok) throw new Error("Server returned HTTP " + resp.status);
+        resultsData = await resp.json();
+    } catch(e) {
+        console.error("Failed to load results:", e);
+        showErrorBanner(e.message || "Could not fetch docking results. Please reload the page.");
+        return;
+    }
+
     allResults = resultsData.results || [];
     const pockets = resultsData.pockets || [];
     const proteinFile = resultsData.protein_file || "protein.pdb";
 
-    // Load protein and cache data for re-use on pose switches
     try {
         const resp = await fetch(API_BASE + "/files/" + encodeURIComponent(proteinFile));
         if (!resp.ok) throw new Error("HTTP " + resp.status);
@@ -523,7 +547,6 @@ async function init() {
         viewer.setStyle({model: proteinModel}, getProteinReprSpec());
     } catch(e) { console.error("Failed to load protein:", e); }
 
-    // Build pocket badges
     const badgeContainer = document.getElementById('pocket-badges');
     pockets.forEach((pocket, i) => {
         const color = POCKET_COLORS[i % POCKET_COLORS.length];
@@ -1180,6 +1203,11 @@ function renderResults() {
     tbody.innerHTML = '';
     document.getElementById('result-count').textContent = `${sorted.length} poses across ${new Set(sorted.map(r => r.pocket_rank)).size} pockets`;
 
+    if (sorted.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" class="px-3 py-8 text-center text-gray-400 text-sm">No docking poses were generated for this job.</td></tr>';
+        return;
+    }
+
     sorted.forEach(result => {
         const key = `p${result.pocket_rank}_pose${result.pose_rank}`;
         const color = POCKET_COLORS[(result.pocket_rank - 1) % POCKET_COLORS.length];
@@ -1282,6 +1310,10 @@ async function selectPose(result, key) {
         <div><dt class="text-gray-500 text-xs">RMSD UB</dt><dd class="font-medium">${result.rmsd_ub.toFixed(2)}</dd></div>
         <div class="col-span-2"><dt class="text-gray-500 text-xs">Combined Score</dt><dd class="font-bold text-lg text-blue-600">${result.combined_score.toFixed(3)}</dd></div>
     `;
+    if (JOB_REFINED) {
+        details.innerHTML += `<div class="col-span-2"><dt class="text-gray-500 text-xs">Refinement</dt><dd><span class="inline-block px-2 py-0.5 rounded text-xs font-semibold bg-emerald-100 text-emerald-800">Energy-minimized</span></dd></div>`;
+    }
+
     if (result.ligand_efficiency) {
         const le = result.ligand_efficiency;
         const leClass = le > 0.3 ? 'text-green-600' : le > 0.2 ? 'text-yellow-600' : 'text-gray-500';
@@ -1917,11 +1949,11 @@ document.addEventListener('fullscreenchange', () => {
         dest.innerHTML = src.innerHTML;
     }
 
-    // Reset sidebar state on exit
     if (!isFs) {
         sidebarCollapsed = false;
         document.getElementById('results-grid').classList.remove('sidebar-collapsed');
-        document.getElementById('sidebar-chevron').style.transform = '';
+        const chevron = document.getElementById('sidebar-chevron');
+        if (chevron) chevron.style.transform = '';
     }
 
     setTimeout(() => {
@@ -1933,7 +1965,8 @@ document.addEventListener('fullscreenchange', () => {
 function toggleSidebar() {
     sidebarCollapsed = !sidebarCollapsed;
     document.getElementById('results-grid').classList.toggle('sidebar-collapsed', sidebarCollapsed);
-    document.getElementById('sidebar-chevron').style.transform = sidebarCollapsed ? 'rotate(180deg)' : '';
+    const chevron = document.getElementById('sidebar-chevron');
+    if (chevron) chevron.style.transform = sidebarCollapsed ? 'rotate(180deg)' : '';
     setTimeout(() => {
         viewer.resize();
         viewer.render();

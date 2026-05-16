@@ -22,7 +22,7 @@ from .serializers import (
 # ---------------------------------------------------------------------------
 # Queue helpers
 # ---------------------------------------------------------------------------
-RUNNING_STATUSES = ["running_p2rank", "running_prep", "running_vina"]
+RUNNING_STATUSES = ["running_p2rank", "running_prep", "running_vina", "running_refinement"]
 DEFAULT_AVG_DURATION_S = 240  # 4 min — used until we have completed-job history
 
 
@@ -75,14 +75,12 @@ def upload_view(request):
 
 
 def _enqueue_pipeline(job):
-    """Dispatch the Celery pipeline. On broker failure, mark the job failed and return False."""
+    """Dispatch the Celery pipeline. On broker failure, delete the orphaned job and return False."""
     from .tasks import run_docking_pipeline
     try:
         task = run_docking_pipeline.delay(job.id)
-    except Exception as exc:
-        job.status = "failed"
-        job.error_message = f"Could not enqueue job — broker unreachable: {exc}"[:2000]
-        job.save(update_fields=["status", "error_message"])
+    except Exception:
+        job.delete()
         return False
     job.celery_task_id = task.id
     job.save(update_fields=["celery_task_id"])
@@ -122,14 +120,16 @@ def api_job_results(request, job_id):
     pockets = Pocket.objects.filter(job=job)
     results = DockingResult.objects.filter(pocket__job=job).select_related("pocket")
 
-    return JsonResponse({
+    data = {
         "job_id": job.id,
         "status": job.status,
+        "complete": job.status == DockingJob.Status.COMPLETED,
         "protein_file": job.protein_filename,
         "ligand_file": job.ligand_filename,
         "pockets": PocketSerializer(pockets, many=True).data,
         "results": DockingResultSerializer(results, many=True).data,
-    })
+    }
+    return JsonResponse(data)
 
 
 @api_view(["POST"])
@@ -164,7 +164,10 @@ def api_serve_file(request, job_id, filename):
     if content_type is None:
         content_type = "text/plain"
 
-    return FileResponse(open(safe_path, "rb"), content_type=content_type)
+    try:
+        return FileResponse(open(safe_path, "rb"), content_type=content_type)
+    except OSError:
+        raise Http404(f"Cannot read file: {filename}")
 
 
 # ---------------------------------------------------------------------------

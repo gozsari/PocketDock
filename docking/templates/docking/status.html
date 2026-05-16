@@ -13,11 +13,6 @@
     <!-- Pipeline Progress -->
     <div class="bg-white rounded-xl border border-gray-200 p-8 mb-8">
         <div class="flex items-center justify-between mb-8">
-            {% with steps="pending,running_p2rank,running_prep,running_vina,completed" %}
-            {% for step_name in "P2Rank Pocket Detection,Structure Preparation,AutoDock Vina Docking,Complete"|make_list %}
-            {% endfor %}
-            {% endwith %}
-
             <div class="flex items-center w-full">
                 <!-- Step 1: P2Rank -->
                 <div class="flex flex-col items-center flex-1">
@@ -62,9 +57,36 @@
                     <span class="text-xs mt-2 text-gray-600 text-center">Vina<br>Docking</span>
                 </div>
 
-                <div class="flex-1 h-1 {% if job.status == 'completed' %}bg-green-500{% elif job.status == 'running_vina' %}bg-gradient-to-r from-blue-500 to-gray-200{% else %}bg-gray-200{% endif %} rounded"></div>
+                <div class="flex-1 h-1 {% if job.status == 'running_refinement' or job.status == 'completed' %}bg-green-500{% elif job.status == 'running_vina' %}bg-gradient-to-r from-blue-500 to-gray-200{% else %}bg-gray-200{% endif %} rounded"></div>
 
-                <!-- Step 4: Done -->
+                {% if job.refine_poses %}
+                <!-- Step 4: Refinement -->
+                <div class="flex flex-col items-center flex-1">
+                    <div class="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold
+                        {% if job.status == 'running_refinement' %}step-active animate-pulse-slow
+                        {% elif job.status == 'completed' %}step-done
+                        {% else %}step-pending{% endif %}">
+                        {% if job.status == 'completed' %}
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                        {% else %}4{% endif %}
+                    </div>
+                    <span class="text-xs mt-2 text-gray-600 text-center">Pose<br>Refinement</span>
+                </div>
+
+                <div class="flex-1 h-1 {% if job.status == 'completed' %}bg-green-500{% elif job.status == 'running_refinement' %}bg-gradient-to-r from-blue-500 to-gray-200{% else %}bg-gray-200{% endif %} rounded"></div>
+
+                <!-- Step 5: Done -->
+                <div class="flex flex-col items-center flex-1">
+                    <div class="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold
+                        {% if job.status == 'completed' %}step-done{% else %}step-pending{% endif %}">
+                        {% if job.status == 'completed' %}
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                        {% else %}5{% endif %}
+                    </div>
+                    <span class="text-xs mt-2 text-gray-600 text-center">Results<br>Ready</span>
+                </div>
+                {% else %}
+                <!-- Step 4: Done (no refinement) -->
                 <div class="flex flex-col items-center flex-1">
                     <div class="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold
                         {% if job.status == 'completed' %}step-done{% else %}step-pending{% endif %}">
@@ -74,6 +96,7 @@
                     </div>
                     <span class="text-xs mt-2 text-gray-600 text-center">Results<br>Ready</span>
                 </div>
+                {% endif %}
             </div>
         </div>
 
@@ -144,6 +167,10 @@
                 <dt class="text-gray-500">Exhaustiveness</dt>
                 <dd class="text-gray-900 font-medium">{{ job.exhaustiveness }}</dd>
             </div>
+            <div>
+                <dt class="text-gray-500">Pose Refinement</dt>
+                <dd class="text-gray-900 font-medium">{% if job.refine_poses %}Enabled{% else %}Off{% endif %}</dd>
+            </div>
         </dl>
     </div>
 </div>
@@ -152,21 +179,35 @@
 {% block extra_js %}
 {% if job.status != 'completed' and job.status != 'failed' %}
 <script>
-(function poll() {
-    setTimeout(function() {
-        fetch("{% url 'docking:api_job_status' job.id %}")
-            .then(r => r.json())
-            .then(data => {
-                if (data.status === 'completed') {
-                    window.location.href = "{% url 'docking:job_detail' job.id %}?view=results";
-                } else if (data.status === 'failed') {
-                    window.location.reload();
-                } else {
-                    window.location.reload();
-                }
-            })
-            .catch(() => poll());
-    }, 5000);
+(function() {
+    let delay = 5000;
+    const MAX_DELAY = 30000;
+
+    function poll() {
+        setTimeout(function() {
+            fetch("{% url 'docking:api_job_status' job.id %}")
+                .then(r => {
+                    if (!r.ok) throw new Error("HTTP " + r.status);
+                    return r.json();
+                })
+                .then(data => {
+                    delay = 5000;
+                    if (data.status === 'completed') {
+                        window.location.href = "{% url 'docking:job_detail' job.id %}?view=results";
+                    } else if (data.status === 'failed') {
+                        window.location.reload();
+                    } else {
+                        window.location.reload();
+                    }
+                })
+                .catch(() => {
+                    delay = Math.min(delay * 1.5, MAX_DELAY);
+                    poll();
+                });
+        }, delay);
+    }
+
+    poll();
 })();
 </script>
 {% endif %}

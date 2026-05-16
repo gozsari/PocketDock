@@ -1,6 +1,7 @@
 import uuid
 from pathlib import Path
 
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 
 
@@ -14,6 +15,7 @@ class DockingJob(models.Model):
         RUNNING_P2RANK = "running_p2rank", "Running P2Rank"
         RUNNING_PREP = "running_prep", "Preparing Structures"
         RUNNING_VINA = "running_vina", "Running AutoDock Vina"
+        RUNNING_REFINEMENT = "running_refinement", "Refining Poses"
         COMPLETED = "completed", "Completed"
         FAILED = "failed", "Failed"
 
@@ -25,9 +27,18 @@ class DockingJob(models.Model):
         max_length=20, choices=Status.choices, default=Status.PENDING
     )
     num_pockets = models.PositiveIntegerField(
-        default=3, help_text="Number of top pockets to dock against"
+        default=3,
+        help_text="Number of top pockets to dock against",
+        validators=[MinValueValidator(1), MaxValueValidator(20)],
     )
-    exhaustiveness = models.PositiveIntegerField(default=8)
+    exhaustiveness = models.PositiveIntegerField(
+        default=8,
+        validators=[MinValueValidator(1), MaxValueValidator(64)],
+    )
+    refine_poses = models.BooleanField(
+        default=False,
+        help_text="Run OpenMM energy minimization on docked poses",
+    )
     error_message = models.TextField(blank=True, default="")
     celery_task_id = models.CharField(max_length=255, blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)

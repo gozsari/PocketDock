@@ -28,6 +28,10 @@ def run_docking_pipeline(self, job_id: int):
         _run_vina_docking(job)
         _run_interaction_analysis(job)
 
+        if job.refine_poses:
+            _run_energy_minimization(job)
+            _run_interaction_analysis(job)
+
         job.status = DockingJob.Status.COMPLETED
         job.save(update_fields=["status", "updated_at"])
         logger.info("Job %s completed successfully", job_id)
@@ -265,8 +269,8 @@ def _run_vina_docking(job):
                     counts_line = lines[3].strip().split()
                     if len(counts_line) >= 1:
                         ligand_heavy_atoms = int(counts_line[0])
-    except Exception:
-        pass
+    except (ValueError, IndexError, IOError) as exc:
+        logger.warning("Could not count ligand heavy atoms for job %s: %s", job.id, exc)
 
     for pocket in pockets:
         logger.info("Docking pocket %d (p=%.2f) for job %s", pocket.rank, pocket.probability, job.id)
@@ -332,9 +336,202 @@ def _run_vina_docking(job):
             min((p["affinity"] for p in poses), default=0),
         )
 
+    total_results = DockingResult.objects.filter(pocket__job=job).count()
+    if total_results == 0:
+        raise RuntimeError(
+            "Vina produced zero docking results across all pockets. "
+            "Check that the ligand and receptor files are valid."
+        )
+
+
+def _run_energy_minimization(job):
+    """Step 5 (optional): Refine docked poses via OpenMM energy minimization."""
+    from .models import DockingJob, DockingResult
+
+    job.status = DockingJob.Status.RUNNING_REFINEMENT
+    job.save(update_fields=["status", "updated_at"])
+
+    job_path = job.job_path
+    protein_path = Path(job.protein_file.path)
+    results_dir = job_path / "results"
+
+    try:
+        from pdbfixer import PDBFixer
+        from openmm import LangevinMiddleIntegrator, Platform
+        from openmm.app import ForceField, Modeller, PDBFile, Simulation
+        import openmm.unit as unit
+    except ImportError as exc:
+        logger.warning("OpenMM not available, skipping refinement: %s", exc)
+        return
+
+    all_results = DockingResult.objects.filter(
+        pocket__job=job
+    ).select_related("pocket")
+
+    refined_count = 0
+    for dr in all_results:
+        pose_pdb = results_dir / f"pocket_{dr.pocket.rank}_pose_{dr.pose_rank}.pdb"
+        if not pose_pdb.exists():
+            continue
+
+        try:
+            _minimize_single_pose(
+                protein_path, pose_pdb, dr,
+                PDBFixer=PDBFixer,
+                ForceField=ForceField,
+                Modeller=Modeller,
+                PDBFile=PDBFile,
+                Simulation=Simulation,
+                LangevinMiddleIntegrator=LangevinMiddleIntegrator,
+                Platform=Platform,
+                unit=unit,
+            )
+            refined_count += 1
+        except Exception as exc:
+            logger.warning(
+                "Refinement failed for pocket %d pose %d: %s",
+                dr.pocket.rank, dr.pose_rank, exc,
+            )
+
+    logger.info("Energy minimization: refined %d/%d poses for job %s",
+                refined_count, all_results.count(), job.id)
+
+
+def _minimize_single_pose(
+    protein_path, pose_pdb_path, docking_result,
+    *, PDBFixer, ForceField, Modeller, PDBFile, Simulation,
+    LangevinMiddleIntegrator, Platform, unit,
+):
+    """Minimize a single protein-ligand complex in implicit solvent."""
+    import io
+    import tempfile
+
+    # Read and combine protein + ligand into a single PDB
+    protein_lines = []
+    with open(protein_path) as f:
+        for line in f:
+            if line.startswith(("ATOM", "HETATM", "TER")):
+                protein_lines.append(line)
+
+    ligand_lines = []
+    with open(pose_pdb_path) as f:
+        for line in f:
+            if line.startswith(("ATOM", "HETATM")):
+                # Ensure ligand is marked as HETATM for force field assignment
+                ligand_lines.append("HETATM" + line[6:] if line.startswith("ATOM") else line)
+
+    combined_pdb = "".join(protein_lines) + "TER\n" + "".join(ligand_lines) + "END\n"
+
+    # Use PDBFixer to add missing heavy atoms and hydrogens to the protein
+    fixer = PDBFixer(pdbfile=io.StringIO(combined_pdb))
+    fixer.findMissingResidues()
+    fixer.findMissingAtoms()
+    fixer.addMissingAtoms()
+    fixer.addMissingHydrogens(7.0)
+
+    # Build the system with implicit solvent (OBC2)
+    forcefield = ForceField("amber14-all.xml", "implicit/obc2.xml")
+
+    try:
+        system = forcefield.createSystem(
+            fixer.topology,
+            nonbondedCutoff=1.0 * unit.nanometers,
+            constraints=None,
+        )
+    except Exception as exc:
+        raise RuntimeError(f"Force field parameterization failed: {exc}") from exc
+
+    integrator = LangevinMiddleIntegrator(
+        300 * unit.kelvin,
+        1.0 / unit.picosecond,
+        0.002 * unit.picoseconds,
+    )
+
+    try:
+        platform = Platform.getPlatformByName("CPU")
+    except Exception:
+        platform = None
+
+    if platform:
+        simulation = Simulation(fixer.topology, system, integrator, platform)
+    else:
+        simulation = Simulation(fixer.topology, system, integrator)
+
+    simulation.context.setPositions(fixer.positions)
+
+    # Get initial energy
+    state_before = simulation.context.getState(getEnergy=True)
+    energy_before = state_before.getPotentialEnergy().value_in_unit(unit.kilojoules_per_mole)
+
+    # Minimize
+    simulation.minimizeEnergy(maxIterations=500)
+
+    # Get final energy
+    state_after = simulation.context.getState(getEnergy=True, getPositions=True)
+    energy_after = state_after.getPotentialEnergy().value_in_unit(unit.kilojoules_per_mole)
+
+    logger.info(
+        "Pose pocket %d pose %d: energy %.1f -> %.1f kJ/mol (delta %.1f)",
+        docking_result.pocket.rank, docking_result.pose_rank,
+        energy_before, energy_after, energy_after - energy_before,
+    )
+
+    # Extract refined ligand coordinates and overwrite the pose PDB
+    positions = state_after.getPositions(asNumpy=True).value_in_unit(unit.angstroms)
+
+    # Count protein atoms to find where ligand starts
+    n_protein_atoms = len(protein_lines) - protein_lines.count("TER\n") if "TER\n" in protein_lines else 0
+    # More reliable: count ATOM/HETATM lines in protein
+    n_prot = sum(1 for l in protein_lines if l.startswith(("ATOM", "HETATM")))
+
+    # We need to figure out how many atoms PDBFixer added (hydrogens etc.)
+    # Instead, write the full minimized ligand portion back
+    # Re-read original ligand to get the atom count
+    orig_lig_atoms = sum(1 for l in ligand_lines if l.startswith(("ATOM", "HETATM")))
+
+    # Write refined ligand PDB from the minimized positions
+    # The topology has all atoms; we extract only the last orig_lig_atoms worth
+    all_atoms = list(fixer.topology.atoms())
+    total_atoms = len(all_atoms)
+
+    # Find ligand atoms by looking for HETATM residues at the end
+    lig_atom_indices = []
+    for i, atom in enumerate(all_atoms):
+        if atom.residue.name not in (
+            "ALA", "ARG", "ASN", "ASP", "CYS", "GLN", "GLU", "GLY",
+            "HIS", "ILE", "LEU", "LYS", "MET", "PHE", "PRO", "SER",
+            "THR", "TRP", "TYR", "VAL", "HOH", "WAT",
+        ):
+            lig_atom_indices.append(i)
+
+    if not lig_atom_indices:
+        return
+
+    # Write only the non-hydrogen ligand atoms with updated coordinates
+    out_lines = []
+    serial = 1
+    for idx in lig_atom_indices:
+        atom = all_atoms[idx]
+        if atom.element.symbol == "H":
+            continue
+        x, y, z = positions[idx]
+        name = atom.name
+        resname = atom.residue.name[:3]
+        chain = atom.residue.chain.id or "A"
+        resseq = atom.residue.index + 1
+        out_lines.append(
+            f"HETATM{serial:5d} {name:<4s} {resname:>3s} {chain}{resseq:4d}    "
+            f"{x:8.3f}{y:8.3f}{z:8.3f}  1.00  0.00\n"
+        )
+        serial += 1
+
+    out_lines.append("END\n")
+    with open(pose_pdb_path, "w") as f:
+        f.writelines(out_lines)
+
 
 def _run_interaction_analysis(job):
-    """Step 4: Analyze protein-ligand interactions using PLIP and generate 2D diagrams."""
+    """Step 4: Analyze protein-ligand interactions using coordinate geometry."""
     import json
 
     logger.info("Running interaction analysis for job %s", job.id)

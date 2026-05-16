@@ -1,9 +1,12 @@
 """Parsers for P2Rank and AutoDock Vina output files."""
 
 import csv
+import logging
 import re
 from pathlib import Path
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 
 def parse_p2rank_predictions(csv_path: str | Path) -> list[dict]:
@@ -19,12 +22,14 @@ def parse_p2rank_predictions(csv_path: str | Path) -> list[dict]:
     pockets = []
     path = Path(csv_path)
     if not path.exists():
+        logger.warning("P2Rank predictions file not found: %s", path)
         return pockets
 
+    skipped = 0
     with open(path, "r") as f:
         reader = csv.DictReader(f)
-        for row in reader:
-            cleaned = {k.strip(): v.strip() for k, v in row.items()}
+        for row_num, row in enumerate(reader, start=2):
+            cleaned = {k.strip(): v.strip() for k, v in row.items() if k is not None and v is not None}
             try:
                 pocket = {
                     "rank": int(cleaned["rank"]),
@@ -38,8 +43,12 @@ def parse_p2rank_predictions(csv_path: str | Path) -> list[dict]:
                     "sas_points": int(cleaned.get("sas_points", 0)),
                 }
                 pockets.append(pocket)
-            except (KeyError, ValueError):
-                continue
+            except (KeyError, ValueError) as exc:
+                skipped += 1
+                logger.warning("Skipped malformed P2Rank row %d in %s: %s", row_num, path.name, exc)
+
+    if skipped:
+        logger.warning("Skipped %d malformed rows in %s", skipped, path.name)
 
     return pockets
 
@@ -54,6 +63,7 @@ def parse_vina_output(pdbqt_path: str | Path) -> list[dict]:
     poses = []
     path = Path(pdbqt_path)
     if not path.exists():
+        logger.warning("Vina output file not found: %s", path)
         return poses
 
     current_pose = None
@@ -104,6 +114,7 @@ def extract_residue_coordinates(pdb_path: str | Path, residue_ids_str: str) -> O
     coords = []
     path = Path(pdb_path)
     if not path.exists():
+        logger.warning("PDB file not found for coordinate extraction: %s", path)
         return None
 
     with open(path, "r") as f:
