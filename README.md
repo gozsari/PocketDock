@@ -90,3 +90,8 @@ python manage.py runserver
 ```
 
 Note: Local development requires P2Rank and AutoDock Vina to be installed separately.
+
+
+## Acknowledgements
+
+PocketDock was conceived and designed by **Gökhan Özsarı**. Development was assisted by [Claude](https://www.anthropic.com/claude) (Anthropic) as an AI coding aid.

@@ -379,10 +379,10 @@ def _detect_interactions_geometry(protein_path: Path, ligand_pdb_path: Path) -> 
     """Detect protein-ligand interactions using coordinate geometry analysis."""
     import math
 
-    HBOND_DIST = 5.0
-    HYDROPHOBIC_DIST = 5.5
-    SALT_BRIDGE_DIST = 6.0
-    PI_STACK_DIST = 7.0
+    HBOND_DIST = 4.2
+    HYDROPHOBIC_DIST = 4.8
+    SALT_BRIDGE_DIST = 4.8
+    PI_STACK_DIST = 6.6
 
     HBOND_ELEMENTS = {"N", "O", "S"}
     HYDROPHOBIC_ELEMENTS = {"C"}
@@ -415,9 +415,9 @@ def _detect_interactions_geometry(protein_path: Path, ligand_pdb_path: Path) -> 
                 ["CD2", "CE2", "CE3", "CZ2", "CZ3", "CH2"]],
         "HIS": [["CG", "ND1", "CD2", "CE1", "NE2"]],
     }
-    PI_CATION_DIST = 6.0
+    PI_CATION_DIST = 7.2
     HALOGEN_ELEMENTS = {"CL", "BR", "I"}
-    HALOGEN_DIST = 4.0
+    HALOGEN_DIST = 4.8
     HALOGEN_ANGLE_MIN = 140
 
     interactions = {
@@ -480,6 +480,26 @@ def _detect_interactions_geometry(protein_path: Path, ligand_pdb_path: Path) -> 
         dot = min(1.0, dot)
         return math.degrees(math.acos(dot))
 
+    def angle_normal_to_vector(ring_normal, ring_centroid, point):
+        """Angle between ring normal and vector from centroid to point (degrees)."""
+        v = (point["x"] - ring_centroid["x"],
+             point["y"] - ring_centroid["y"],
+             point["z"] - ring_centroid["z"])
+        mag_v = math.sqrt(v[0]**2 + v[1]**2 + v[2]**2)
+        if mag_v < 1e-9:
+            return 0.0
+        dot = abs(ring_normal[0]*v[0] + ring_normal[1]*v[1] + ring_normal[2]*v[2])
+        cos_a = min(1.0, dot / mag_v)
+        return math.degrees(math.acos(cos_a))
+
+    def classify_pi_cation_geometry(angle_deg):
+        if angle_deg <= 30:
+            return "face_on"
+        elif angle_deg >= 60:
+            return "edge_on"
+        else:
+            return "tilted"
+
     def angle_three_points(a, b, c):
         """Angle at point b formed by a-b-c, in degrees."""
         v1 = (a["x"]-b["x"], a["y"]-b["y"], a["z"]-b["z"])
@@ -515,34 +535,39 @@ def _detect_interactions_geometry(protein_path: Path, ligand_pdb_path: Path) -> 
                 d = dist(la, pa)
                 res_label = f"{pa['resn']}{pa['resi']}"
 
-                # H-bonds: N/O/S donor-acceptor pairs, deduplicated to
-                # closest contact per (residue, ligand_atom)
+                # H-bonds: N/O/S donor-acceptor pairs with complementarity check,
+                # deduplicated to closest contact per (residue, ligand_atom)
                 if d <= HBOND_DIST and pa["element"] in HBOND_ELEMENTS and la["element"] in HBOND_ELEMENTS:
-                    key = (res_label, la["name"])
-                    if key not in best_hbonds or d < best_hbonds[key]["distance"]:
-                        is_donor = (pa["name"] in HBOND_DONORS.get(pa["resn"], set())
-                                    or (pa["name"] == "N" and pa["name"] in BACKBONE_ATOMS))
-                        is_acceptor = (pa["name"] in HBOND_ACCEPTORS.get(pa["resn"], set())
-                                       or (pa["name"] == "O" and pa["name"] in BACKBONE_ATOMS))
-                        if is_donor and is_acceptor:
-                            hb_type = "both"
-                        elif is_donor:
-                            hb_type = "donor"
-                        elif is_acceptor:
-                            hb_type = "acceptor"
-                        else:
-                            hb_type = "donor" if pa["element"] == "N" else "acceptor"
-                        best_hbonds[key] = {
-                            "protein_res": res_label,
-                            "protein_atom": pa["name"],
-                            "ligand_atom": la["name"],
-                            "ligand_atom_id": la["atom_id"],
-                            "distance": round(d, 2),
-                            "angle": 0,
-                            "type": hb_type,
-                            "protein_coords": [pa["x"], pa["y"], pa["z"]],
-                            "ligand_coords": [la["x"], la["y"], la["z"]],
-                        }
+                    prot_is_donor = (pa["name"] in HBOND_DONORS.get(pa["resn"], set())
+                                     or (pa["name"] == "N" and pa["name"] in BACKBONE_ATOMS))
+                    prot_is_acceptor = (pa["name"] in HBOND_ACCEPTORS.get(pa["resn"], set())
+                                        or (pa["name"] == "O" and pa["name"] in BACKBONE_ATOMS))
+                    if not prot_is_donor and not prot_is_acceptor:
+                        prot_is_donor = pa["element"] == "N"
+                        prot_is_acceptor = pa["element"] in {"O", "S"}
+                    lig_is_donor = la["element"] in {"N", "O"}
+                    lig_is_acceptor = la["element"] in {"O", "N", "S"}
+                    complementary = (prot_is_donor and lig_is_acceptor) or (prot_is_acceptor and lig_is_donor)
+                    if complementary:
+                        key = (res_label, la["name"])
+                        if key not in best_hbonds or d < best_hbonds[key]["distance"]:
+                            if prot_is_donor and prot_is_acceptor:
+                                hb_type = "both"
+                            elif prot_is_donor:
+                                hb_type = "donor"
+                            else:
+                                hb_type = "acceptor"
+                            best_hbonds[key] = {
+                                "protein_res": res_label,
+                                "protein_atom": pa["name"],
+                                "ligand_atom": la["name"],
+                                "ligand_atom_id": la["atom_id"],
+                                "distance": round(d, 2),
+                                "angle": None,
+                                "type": hb_type,
+                                "protein_coords": [pa["x"], pa["y"], pa["z"]],
+                                "ligand_coords": [la["x"], la["y"], la["z"]],
+                            }
 
                 # Hydrophobic: sidechain C of hydrophobic residues only,
                 # deduplicated to closest contact per (residue, ligand_atom)
@@ -563,14 +588,17 @@ def _detect_interactions_geometry(protein_path: Path, ligand_pdb_path: Path) -> 
                             "ligand_coords": [la["x"], la["y"], la["z"]],
                         }
 
-                # Salt bridges: charged functional-group atoms near ligand N/O
+                # Salt bridges: charged functional-group atoms near ligand N/O,
+                # deduplicated per (residue, ligand_atom)
                 if d <= SALT_BRIDGE_DIST:
                     allowed = SALT_BRIDGE_ATOMS.get(pa["resn"])
                     if allowed and pa["name"] in allowed and la["element"] in {"N", "O"}:
-                        existing = [sb for sb in interactions["salt_bridges"] if sb["protein_res"] == res_label]
+                        existing = [sb for sb in interactions["salt_bridges"]
+                                    if sb["protein_res"] == res_label and sb["ligand_atom_id"] == la["atom_id"]]
                         if not existing:
                             interactions["salt_bridges"].append({
                                 "protein_res": res_label,
+                                "protein_atom": pa["name"],
                                 "ligand_atom_id": la["atom_id"],
                                 "distance": round(d, 2),
                                 "type": "negative" if pa["resn"] in NEGATIVE_RES else "positive",
@@ -600,35 +628,50 @@ def _detect_interactions_geometry(protein_path: Path, ligand_pdb_path: Path) -> 
                         "centroid": c, "normal": n, "atoms": ring_atoms,
                     })
 
-        # ── Build ligand ring centroids & normals (heuristic) ──
-        lig_ring_eligible = [a for a in lig_atoms if a["element"] in {"C", "N"}]
-        adj = {i: [] for i in range(len(lig_ring_eligible))}
+        # ── Build ligand ring centroids & normals ──
+        lig_ring_eligible = [a for a in lig_atoms if a["element"] in {"C", "N", "O", "S"}]
+        adj = {i: set() for i in range(len(lig_ring_eligible))}
         for i in range(len(lig_ring_eligible)):
             for j in range(i + 1, len(lig_ring_eligible)):
                 if dist(lig_ring_eligible[i], lig_ring_eligible[j]) <= 1.8:
-                    adj[i].append(j)
-                    adj[j].append(i)
+                    adj[i].add(j)
+                    adj[j].add(i)
 
-        visited = set()
-        lig_rings = []
-        for start in adj:
-            if start in visited or len(adj[start]) < 2:
-                continue
-            cluster = []
-            stack = [start]
-            while stack:
-                node = stack.pop()
-                if node in visited:
+        def _find_small_rings(adj, max_size=6):
+            """Find all simple cycles of size 5 or 6 using DFS."""
+            found = set()
+            rings = []
+            nodes = [i for i in adj if len(adj[i]) >= 2]
+            for start in nodes:
+                _dfs_ring(adj, start, start, [start], {start}, found, rings, max_size)
+            return rings
+
+        def _dfs_ring(adj, start, current, path, visited, found, rings, max_size):
+            if len(path) > max_size:
+                return
+            for neighbor in adj[current]:
+                if neighbor == start and len(path) >= 5:
+                    canon = frozenset(path)
+                    if canon not in found:
+                        found.add(canon)
+                        rings.append(list(path))
                     continue
-                visited.add(node)
-                if len(adj[node]) >= 2:
-                    cluster.append(node)
-                    stack.extend(adj[node])
-            if 5 <= len(cluster) <= 6:
-                ring_atoms = [lig_ring_eligible[i] for i in cluster]
-                c = centroid(ring_atoms)
-                n = normal(ring_atoms)
-                lig_rings.append({"centroid": c, "normal": n, "atoms": ring_atoms})
+                if neighbor in visited:
+                    continue
+                if neighbor < start:
+                    continue
+                visited.add(neighbor)
+                path.append(neighbor)
+                _dfs_ring(adj, start, neighbor, path, visited, found, rings, max_size)
+                path.pop()
+                visited.discard(neighbor)
+
+        lig_rings = []
+        for ring_indices in _find_small_rings(adj):
+            ring_atoms = [lig_ring_eligible[i] for i in ring_indices]
+            c = centroid(ring_atoms)
+            n = normal(ring_atoms)
+            lig_rings.append({"centroid": c, "normal": n, "atoms": ring_atoms})
 
         # ── Pi-stacking: ring centroid-centroid distance + plane angle ──
         seen_pi = set()
@@ -645,7 +688,7 @@ def _detect_interactions_geometry(protein_path: Path, ligand_pdb_path: Path) -> 
                     elif ang >= 60:
                         stack_type = "t_shaped"
                     else:
-                        continue
+                        stack_type = "tilted"
                     seen_pi.add(res_label)
                     interactions["pi_stacking"].append({
                         "protein_res": res_label,
@@ -666,44 +709,51 @@ def _detect_interactions_geometry(protein_path: Path, ligand_pdb_path: Path) -> 
             elif resn == "ARG" and "CZ" in atom_map:
                 prot_cations.append({"resn": resn, "resi": resi, "atom": atom_map["CZ"]})
 
-        seen_pc = set()
+        seen_pi_cation = set()
         for cat in prot_cations:
             res_label = f"{cat['resn']}{cat['resi']}"
-            if res_label in seen_pc:
+            if res_label in seen_pi_cation:
                 continue
             for lr in lig_rings:
                 d = dist(cat["atom"], lr["centroid"])
                 if d <= PI_CATION_DIST:
-                    seen_pc.add(res_label)
+                    ang = angle_normal_to_vector(lr["normal"], lr["centroid"], cat["atom"])
+                    geometry = classify_pi_cation_geometry(ang)
+                    seen_pi_cation.add(res_label)
                     interactions["pi_cation"].append({
                         "protein_res": res_label,
                         "ligand_atom_id": "ring",
                         "distance": round(d, 2),
-                        "angle": 0,
+                        "angle": round(ang, 1),
                         "type": "protein_cation",
+                        "geometry": geometry,
                         "protein_coords": [cat["atom"]["x"], cat["atom"]["y"], cat["atom"]["z"]],
                         "ligand_coords": [lr["centroid"]["x"], lr["centroid"]["y"], lr["centroid"]["z"]],
+                        "ligand_ring_normal": list(lr["normal"]),
                     })
                     break
 
         lig_nitrogens = [a for a in lig_atoms if a["element"] == "N"]
-        seen_pr = set()
         for pr in prot_rings:
             res_label = f"{pr['resn']}{pr['resi']}"
-            if res_label in seen_pr:
+            if res_label in seen_pi_cation:
                 continue
             for ln in lig_nitrogens:
                 d = dist(pr["centroid"], ln)
                 if d <= PI_CATION_DIST:
-                    seen_pr.add(res_label)
+                    ang = angle_normal_to_vector(pr["normal"], pr["centroid"], ln)
+                    geometry = classify_pi_cation_geometry(ang)
+                    seen_pi_cation.add(res_label)
                     interactions["pi_cation"].append({
                         "protein_res": res_label,
                         "ligand_atom_id": ln["atom_id"],
                         "distance": round(d, 2),
-                        "angle": 0,
+                        "angle": round(ang, 1),
                         "type": "protein_ring",
+                        "geometry": geometry,
                         "protein_coords": [pr["centroid"]["x"], pr["centroid"]["y"], pr["centroid"]["z"]],
                         "ligand_coords": [ln["x"], ln["y"], ln["z"]],
+                        "protein_ring_normal": list(pr["normal"]),
                     })
                     break
 
