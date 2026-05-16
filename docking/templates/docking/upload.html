@@ -86,6 +86,13 @@
                     <p class="mt-1 text-xs text-gray-400">Higher = more thorough but slower (1-64)</p>
                 </div>
             </div>
+            <div class="mt-4">
+                <label for="id_scoring_function" class="block text-sm text-gray-600 mb-1">
+                    Scoring Function
+                </label>
+                {{ form.scoring_function }}
+                <p class="mt-1 text-xs text-gray-400">Vina (default) or Vinardo (knowledge-based, sometimes better for polar interactions)</p>
+            </div>
         </div>
 
         <!-- Post-Docking Refinement -->

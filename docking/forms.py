@@ -6,7 +6,7 @@ from .models import DockingJob
 class DockingJobForm(forms.ModelForm):
     class Meta:
         model = DockingJob
-        fields = ["name", "protein_file", "ligand_file", "num_pockets", "exhaustiveness", "refine_poses"]
+        fields = ["name", "protein_file", "ligand_file", "num_pockets", "exhaustiveness", "scoring_function", "refine_poses"]
         widgets = {
             "name": forms.TextInput(
                 attrs={
@@ -40,6 +40,11 @@ class DockingJobForm(forms.ModelForm):
                     "class": "w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent",
                     "min": 1,
                     "max": 64,
+                }
+            ),
+            "scoring_function": forms.Select(
+                attrs={
+                    "class": "w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent",
                 }
             ),
             "refine_poses": forms.CheckboxInput(

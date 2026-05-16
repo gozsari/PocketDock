@@ -14,7 +14,7 @@ def _make_file(name, content=b"data", size=None):
 class TestDockingJobForm:
     def test_valid_form(self):
         form = DockingJobForm(
-            data={"name": "test", "num_pockets": 3, "exhaustiveness": 8},
+            data={"name": "test", "num_pockets": 3, "exhaustiveness": 8, "scoring_function": "vina"},
             files={
                 "protein_file": _make_file("protein.pdb"),
                 "ligand_file": _make_file("ligand.sdf"),
@@ -86,3 +86,34 @@ class TestDockingJobForm:
         )
         assert not form.is_valid()
         assert "exhaustiveness" in form.errors
+
+    def test_scoring_function_vina(self):
+        form = DockingJobForm(
+            data={"name": "test", "num_pockets": 3, "exhaustiveness": 8, "scoring_function": "vina"},
+            files={
+                "protein_file": _make_file("protein.pdb"),
+                "ligand_file": _make_file("ligand.sdf"),
+            },
+        )
+        assert form.is_valid(), form.errors
+
+    def test_scoring_function_vinardo(self):
+        form = DockingJobForm(
+            data={"name": "test", "num_pockets": 3, "exhaustiveness": 8, "scoring_function": "vinardo"},
+            files={
+                "protein_file": _make_file("protein.pdb"),
+                "ligand_file": _make_file("ligand.sdf"),
+            },
+        )
+        assert form.is_valid(), form.errors
+
+    def test_scoring_function_invalid(self):
+        form = DockingJobForm(
+            data={"name": "test", "num_pockets": 3, "exhaustiveness": 8, "scoring_function": "invalid"},
+            files={
+                "protein_file": _make_file("protein.pdb"),
+                "ligand_file": _make_file("ligand.sdf"),
+            },
+        )
+        assert not form.is_valid()
+        assert "scoring_function" in form.errors

@@ -35,6 +35,17 @@ class DockingJob(models.Model):
         default=8,
         validators=[MinValueValidator(1), MaxValueValidator(64)],
     )
+
+    class ScoringFunction(models.TextChoices):
+        VINA = "vina", "Vina"
+        VINARDO = "vinardo", "Vinardo"
+
+    scoring_function = models.CharField(
+        max_length=10,
+        choices=ScoringFunction.choices,
+        default=ScoringFunction.VINA,
+        help_text="Scoring function for AutoDock Vina",
+    )
     refine_poses = models.BooleanField(
         default=False,
         help_text="Run OpenMM energy minimization on docked poses",

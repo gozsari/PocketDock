@@ -296,6 +296,7 @@ def _run_vina_docking(job):
             "--size_y", str(round(box_size_y, 1)),
             "--size_z", str(round(box_size_z, 1)),
             "--exhaustiveness", str(job.exhaustiveness),
+            "--scoring", job.scoring_function,
             "--num_modes", str(settings.VINA_NUM_MODES),
             "--out", str(output_pdbqt),
         ]

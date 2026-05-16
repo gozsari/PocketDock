@@ -38,7 +38,7 @@ class DockingJobStatusSerializer(serializers.ModelSerializer):
         model = DockingJob
         fields = [
             "id", "name", "status", "status_display",
-            "num_pockets", "exhaustiveness",
+            "num_pockets", "exhaustiveness", "scoring_function",
             "error_message", "num_results",
             "created_at", "updated_at",
         ]

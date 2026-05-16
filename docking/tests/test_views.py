@@ -61,6 +61,16 @@ class TestAPIJobResults:
         data = resp.json()
         assert data["complete"] is True
         assert len(data["results"]) == 1
+        assert data["scoring_function"] == "Vina"
+
+    def test_results_scoring_function_vinardo(self, sample_job, sample_result):
+        sample_job.status = DockingJob.Status.COMPLETED
+        sample_job.scoring_function = "vinardo"
+        sample_job.save()
+        client = Client()
+        resp = client.get(reverse("docking:api_job_results", args=[sample_job.id]))
+        data = resp.json()
+        assert data["scoring_function"] == "Vinardo"
 
 
 @pytest.mark.django_db

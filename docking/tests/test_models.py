@@ -12,6 +12,16 @@ class TestDockingJob:
     def test_status_default(self, sample_job):
         assert sample_job.status == DockingJob.Status.PENDING
 
+    def test_scoring_function_default(self, sample_job):
+        assert sample_job.scoring_function == DockingJob.ScoringFunction.VINA
+
+    def test_scoring_function_vinardo(self, sample_job):
+        sample_job.scoring_function = DockingJob.ScoringFunction.VINARDO
+        sample_job.save()
+        sample_job.refresh_from_db()
+        assert sample_job.scoring_function == "vinardo"
+        assert sample_job.get_scoring_function_display() == "Vinardo"
+
     def test_str(self, sample_job):
         s = str(sample_job)
         assert "Test Job" in s
