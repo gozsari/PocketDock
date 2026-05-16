@@ -127,6 +127,7 @@ def api_job_results(request, job_id):
         "protein_file": job.protein_filename,
         "ligand_file": job.ligand_filename,
         "scoring_function": job.get_scoring_function_display(),
+        "admet": job.admet_properties or {},
         "pockets": PocketSerializer(pockets, many=True).data,
         "results": DockingResultSerializer(results, many=True).data,
     }

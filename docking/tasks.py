@@ -25,6 +25,7 @@ def run_docking_pipeline(self, job_id: int):
     try:
         _run_p2rank(job)
         _run_structure_prep(job)
+        _compute_admet_properties(job)
         _run_vina_docking(job)
         _run_interaction_analysis(job)
 
@@ -228,6 +229,82 @@ def _pdb_to_pdbqt_simple(pdb_path: Path, pdbqt_path: Path):
                 fout.write(pdbqt_line)
             elif line.startswith(("TER", "END", "REMARK", "MODEL", "ENDMDL")):
                 fout.write(line)
+
+
+def _compute_admet_properties(job):
+    """Compute ADMET / drug-likeness descriptors from the ligand using RDKit."""
+    from rdkit import Chem
+    from rdkit.Chem import Descriptors, QED, rdMolDescriptors
+
+    ligand_path = Path(job.ligand_file.path)
+    suffix = ligand_path.suffix.lower()
+
+    try:
+        if suffix == ".sdf":
+            supplier = Chem.SDMolSupplier(str(ligand_path), removeHs=False)
+            mol = next(iter(supplier), None)
+        elif suffix == ".mol2":
+            mol = Chem.MolFromMol2File(str(ligand_path), removeHs=False)
+        elif suffix == ".mol":
+            mol = Chem.MolFromMolFile(str(ligand_path), removeHs=False)
+        else:
+            logger.warning("ADMET: unsupported ligand format %s", suffix)
+            return
+    except Exception as exc:
+        logger.warning("ADMET: could not read ligand for job %s: %s", job.id, exc)
+        return
+
+    if mol is None:
+        logger.warning("ADMET: RDKit returned None for ligand in job %s", job.id)
+        return
+
+    mol_no_h = Chem.RemoveHs(mol)
+
+    mw = Descriptors.MolWt(mol_no_h)
+    logp = Descriptors.MolLogP(mol_no_h)
+    hba = Descriptors.NumHAcceptors(mol_no_h)
+    hbd = Descriptors.NumHDonors(mol_no_h)
+    tpsa = Descriptors.TPSA(mol_no_h)
+    rot_bonds = Descriptors.NumRotatableBonds(mol_no_h)
+    aromatic_rings = Descriptors.NumAromaticRings(mol_no_h)
+    heavy_atoms = mol_no_h.GetNumHeavyAtoms()
+    fsp3 = rdMolDescriptors.CalcFractionCSP3(mol_no_h)
+    rings = Descriptors.RingCount(mol_no_h)
+
+    try:
+        qed_score = QED.qed(mol_no_h)
+    except Exception:
+        qed_score = None
+
+    lipinski_violations = sum([
+        mw > 500,
+        logp > 5,
+        hba > 10,
+        hbd > 5,
+    ])
+
+    veber_pass = tpsa <= 140 and rot_bonds <= 10
+
+    props = {
+        "molecular_weight": round(mw, 2),
+        "logp": round(logp, 2),
+        "hba": hba,
+        "hbd": hbd,
+        "tpsa": round(tpsa, 2),
+        "rotatable_bonds": rot_bonds,
+        "aromatic_rings": aromatic_rings,
+        "heavy_atoms": heavy_atoms,
+        "rings": rings,
+        "fsp3": round(fsp3, 3),
+        "qed": round(qed_score, 3) if qed_score is not None else None,
+        "lipinski_violations": lipinski_violations,
+        "lipinski_pass": lipinski_violations == 0,
+        "veber_pass": veber_pass,
+    }
+
+    job.admet_properties = props
+    job.save(update_fields=["admet_properties"])
+    logger.info("ADMET properties computed for job %s: MW=%.1f, QED=%s", job.id, mw, qed_score)
 
 
 def _run_vina_docking(job):

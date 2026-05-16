@@ -22,6 +22,16 @@ class TestDockingJob:
         assert sample_job.scoring_function == "vinardo"
         assert sample_job.get_scoring_function_display() == "Vinardo"
 
+    def test_admet_properties_default(self, sample_job):
+        assert sample_job.admet_properties == {}
+
+    def test_admet_properties_roundtrip(self, sample_job):
+        sample_job.admet_properties = {"molecular_weight": 180.16, "lipinski_pass": True}
+        sample_job.save()
+        sample_job.refresh_from_db()
+        assert sample_job.admet_properties["molecular_weight"] == 180.16
+        assert sample_job.admet_properties["lipinski_pass"] is True
+
     def test_str(self, sample_job):
         s = str(sample_job)
         assert "Test Job" in s

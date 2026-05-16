@@ -50,6 +50,11 @@ class DockingJob(models.Model):
         default=False,
         help_text="Run OpenMM energy minimization on docked poses",
     )
+    admet_properties = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Computed ADMET/drug-likeness properties from RDKit",
+    )
     error_message = models.TextField(blank=True, default="")
     celery_task_id = models.CharField(max_length=255, blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
