@@ -20,7 +20,7 @@ All runtime configuration is via environment variables. Set them in `docker-comp
 | `CELERY_RESULT_BACKEND` | `redis://localhost:6379/0` | Redis URL for Celery task results |
 | `WORKER_CONCURRENCY` | `2` | Number of parallel Celery worker processes — used by the [Queue](user-guide/queue.md) page to compute ETA. **Must match `--concurrency=N` in the celery service's command in `docker-compose.yml`**, otherwise the ETA will be systematically wrong. |
 
-In the bundled [docker-compose.yml](https://github.com/ozsari/pocketdock/blob/main/docker-compose.yml), both default to `redis://redis:6379/0` (the in-network Redis service).
+In the bundled [docker-compose.yml](https://github.com/gozsari/PocketDock/blob/main/docker-compose.yml), both default to `redis://redis:6379/0` (the in-network Redis service).
 
 ### P2Rank
 
@@ -45,7 +45,7 @@ The docking box is computed as `pocket_extent + 2 × VINA_BOX_PADDING` along eac
 
 ## File-upload limits
 
-Hard-coded in [pocketdock/settings.py](https://github.com/ozsari/pocketdock/blob/main/pocketdock/settings.py):
+Hard-coded in [pocketdock/settings.py](https://github.com/gozsari/PocketDock/blob/main/pocketdock/settings.py):
 
 ```python
 DATA_UPLOAD_MAX_MEMORY_SIZE = 50 * 1024 * 1024  # 50 MB
@@ -57,7 +57,7 @@ The upload form layers form-level validation on top:
 - **Protein**: ≤ 50 MB
 - **Ligand**: ≤ 10 MB
 
-Raise these by editing `settings.py` and the validators in [docking/forms.py](https://github.com/ozsari/pocketdock/blob/main/docking/forms.py) — no env var.
+Raise these by editing `settings.py` and the validators in [docking/forms.py](https://github.com/gozsari/PocketDock/blob/main/docking/forms.py) — no env var.
 
 ## Celery task time limit
 

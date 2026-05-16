@@ -274,6 +274,6 @@ print(f"Saved best pose to job_{job_id}_best.pdb")
 
 ## Rate limits and concurrency
 
-PocketDock has no built-in rate limiting. Concurrency is controlled by Celery — by default the worker container runs 2 worker processes (`--concurrency=2` in [docker-compose.yml](https://github.com/ozsari/pocketdock/blob/main/docker-compose.yml)). Submitting more jobs than that just queues them.
+PocketDock has no built-in rate limiting. Concurrency is controlled by Celery — by default the worker container runs 2 worker processes (`--concurrency=2` in [docker-compose.yml](https://github.com/gozsari/PocketDock/blob/main/docker-compose.yml)). Submitting more jobs than that just queues them.
 
 For high-throughput screening, scale the Celery worker (more replicas or higher `--concurrency`) rather than parallelizing API submissions client-side.

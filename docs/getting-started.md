@@ -13,7 +13,7 @@ If you don't have files handy, the [RCSB PDB](https://www.rcsb.org/) is a good s
 ## Run with Docker (recommended)
 
 ```bash
-git clone https://github.com/ozsari/pocketdock.git
+git clone https://github.com/gozsari/PocketDock.git
 cd pocketdock
 docker compose up --build
 ```

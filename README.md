@@ -2,7 +2,7 @@
 
 A web-based tool that integrates **P2Rank** for binding pocket prediction and **AutoDock Vina** for molecular docking, with interactive **3Dmol.js** visualization.
 
-**Documentation**: <https://ozsari.github.io/pocketdock/>
+**Documentation**: <https://pocketdock.readthedocs.io/>
 
 ## Features
 

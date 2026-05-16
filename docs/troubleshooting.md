@@ -76,7 +76,7 @@ If *every* pocket fails this way, suspect a problem with the prepared receptor o
 
 ### Hits the Celery task time limit (3600s)
 
-The `CELERY_TASK_TIME_LIMIT` in [settings.py](https://github.com/ozsari/pocketdock/blob/main/pocketdock/settings.py) kills tasks running over an hour. Either raise the limit (see [Configuration](configuration.md)) or reduce the workload (lower exhaustiveness / fewer pockets).
+The `CELERY_TASK_TIME_LIMIT` in [settings.py](https://github.com/gozsari/PocketDock/blob/main/pocketdock/settings.py) kills tasks running over an hour. Either raise the limit (see [Configuration](configuration.md)) or reduce the workload (lower exhaustiveness / fewer pockets).
 
 ## UI issues
 
@@ -115,4 +115,4 @@ Three things to check:
 - **Celery worker logs**: `docker compose logs celery` — most pipeline failures dump tracebacks here.
 - **Web logs**: `docker compose logs web` — for upload validation, request errors.
 - **Job artifacts**: every job's working directory is at `media/jobs/<job_dir>/`. Inspect P2Rank output (`p2rank_output/`), prepared structures (`receptor.pdbqt`, `ligand.pdbqt`), and per-pose PDBs (`results/`) directly.
-- **Open an issue**: <https://github.com/ozsari/pocketdock/issues> — include the error message, the input files (or a redacted version), and the Celery log excerpt.
+- **Open an issue**: <https://github.com/gozsari/PocketDock/issues> — include the error message, the input files (or a redacted version), and the Celery log excerpt.

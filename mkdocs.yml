@@ -1,10 +1,11 @@
 site_name: PocketDock
 site_description: Automated molecular docking pipeline with P2Rank pocket prediction, AutoDock Vina docking, and interactive 3Dmol.js visualization.
 site_author: PocketDock Contributors
+site_url: https://pocketdock.readthedocs.io/en/latest/
 
 # Update repo_url after creating the GitHub repository
-repo_url: https://github.com/ozsari/pocketdock
-repo_name: ozsari/pocketdock
+repo_url: https://github.com/gozsari/PocketDock
+repo_name: gozsari/PocketDock
 edit_uri: edit/main/docs/
 
 theme:
@@ -69,7 +70,7 @@ markdown_extensions:
 extra:
   social:
     - icon: fontawesome/brands/github
-      link: https://github.com/ozsari/pocketdock
+      link: https://github.com/gozsari/PocketDock
 
 nav:
   - Home: index.md

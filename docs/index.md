@@ -47,4 +47,4 @@ Each stage runs as a [Celery](https://docs.celeryq.dev/) task; the web UI polls 
 
 ## License
 
-PocketDock is released under the [MIT License](https://github.com/ozsari/pocketdock/blob/main/LICENSE).
+PocketDock is released under the [MIT License](https://github.com/gozsari/PocketDock/blob/main/LICENSE).

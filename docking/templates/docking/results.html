@@ -7,7 +7,7 @@
         width: 100%;
         height: 500px;
         position: relative;
-        background: #ffffff;
+        background: #1a1a2e;
         border-radius: 0.5rem;
         overflow: hidden;
     }
@@ -231,8 +231,9 @@
                         <div id="turntable-progress" class="turntable-progress" style="display:none;"></div>
                     </div>
                     <div class="px-4 py-3 border-t border-gray-100 flex flex-wrap items-center gap-2">
-                        <button class="viewer-control-btn" id="btn-cartoon" onclick="toggleCartoon()">Protein Cartoon</button>
+                        <button class="viewer-control-btn active" id="btn-cartoon" onclick="toggleCartoon()">Protein Cartoon</button>
                         <button class="viewer-control-btn active" id="btn-pocket-res" onclick="togglePocketResidues()">Pocket Residues</button>
+                        <button class="viewer-control-btn active" id="btn-int-sidechains" onclick="toggleInteractingSidechains()" title="Whole side chains of residues with detected interactions, drawn as solid sticks">Interacting Side Chains</button>
                         <button class="viewer-control-btn active" id="btn-int-hbond" onclick="toggleIntType('hydrogen_bonds')" style="border-color:#eab308;color:#92400e" title="H-bonds">H-bond</button>
                         <button class="viewer-control-btn active" id="btn-int-hydrophobic" onclick="toggleIntType('hydrophobic')" style="border-color:#22c55e;color:#065f46" title="Hydrophobic">Hydro.</button>
                         <button class="viewer-control-btn active" id="btn-int-salt" onclick="toggleIntType('salt_bridges')" style="border-color:#ec4899;color:#9d174d" title="Salt bridges">Salt</button>
@@ -241,8 +242,8 @@
                         <button class="viewer-control-btn active" id="btn-int-halogen" onclick="toggleIntType('halogen_bonds')" style="border-color:#ef4444;color:#7f1d1d" title="Halogen bonds">Halogen</button>
                         <span class="text-gray-300 mx-1">|</span>
                         <button class="viewer-control-btn" id="btn-surface" onclick="toggleSurface()">Pocket Surface</button>
-                        <button class="viewer-control-btn" id="btn-labels" onclick="toggleLabels()">Labels</button>
-                        <button class="viewer-control-btn active" id="btn-distances" onclick="toggleDistances()">Distances</button>
+                        <button class="viewer-control-btn active" id="btn-labels" onclick="toggleLabels()" title="Label interacting residues in the binding site">Labels</button>
+                        <button class="viewer-control-btn" id="btn-distances" onclick="toggleDistances()">Distances</button>
                         <div style="position:relative;display:inline-block">
                             <button class="viewer-control-btn" id="btn-thresholds" onclick="toggleThresholdsPopover()" title="Per-type distance thresholds (&#197;)">Thresholds</button>
                             <div id="thresholds-popover" style="display:none;position:absolute;bottom:100%;right:0;z-index:50;margin-bottom:6px;width:300px;background:#fff;border:1px solid #e2e8f0;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.12);padding:12px 14px;">
@@ -402,10 +403,11 @@ let currentSort = {field: 'combined', asc: true};
 let activePoseKey = null;
 let currentInteractions = null;
 
-let showCartoon = false;
+let showCartoon = true;
 let showPocketResidues = true;
+let showInteractingSidechains = true;
 let showSurface = false;
-let showLabels = false;
+let showLabels = true;
 
 let interactionToggles = {
     hydrogen_bonds: true, hydrophobic: true,
@@ -450,11 +452,11 @@ function filterInteractions(interactions) {
     return filtered;
 }
 
-let showDistances = true;
+let showDistances = false;
 let inspectHighlight = null;
 let ligandRepr = 'stick';
 let proteinRepr = 'cartoon';
-let proteinColor = 'spectrum';
+let proteinColor = 'chain';
 let showProteinSurface = false;
 
 let pocketSurfaceHandle = null;
@@ -470,12 +472,12 @@ const POCKET_COLORS = [
 ];
 
 const INTERACTION_COLORS = {
-    hydrogen_bonds: '#eab308',
-    hydrophobic: '#22c55e',
-    salt_bridges: '#ec4899',
-    pi_stacking: '#06b6d4',
-    pi_cation: '#8b5cf6',
-    halogen_bonds: '#ef4444',
+    hydrogen_bonds: '#facc15',
+    hydrophobic: '#4ade80',
+    salt_bridges: '#f472b6',
+    pi_stacking: '#22d3ee',
+    pi_cation: '#a78bfa',
+    halogen_bonds: '#f87171',
 };
 
 const INTERACTION_LABELS = {
@@ -501,7 +503,7 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape') { document.g
 
 async function init() {
     viewer = $3Dmol.createViewer('viewer-container', {
-        backgroundColor: '#ffffff',
+        backgroundColor: '#1a1a2e',
         antialias: true,
     });
 
@@ -690,6 +692,12 @@ function togglePocketResidues() {
     redrawPose();
 }
 
+function toggleInteractingSidechains() {
+    showInteractingSidechains = !showInteractingSidechains;
+    document.getElementById('btn-int-sidechains').classList.toggle('active', showInteractingSidechains);
+    redrawPose();
+}
+
 const INT_BTN_IDS = {
     hydrogen_bonds: 'btn-int-hbond', hydrophobic: 'btn-int-hydrophobic',
     salt_bridges: 'btn-int-salt', pi_stacking: 'btn-int-pistack',
@@ -700,7 +708,7 @@ function toggleIntType(type) {
     interactionToggles[type] = !interactionToggles[type];
     const btnId = INT_BTN_IDS[type];
     if (btnId) document.getElementById(btnId).classList.toggle('active', interactionToggles[type]);
-    redrawInteractions();
+    redrawAllInteractions();
 }
 
 const THRESHOLD_SLIDER_COLORS = {
@@ -782,12 +790,15 @@ function redrawAllInteractions() {
     renderInteractionTable(currentInteractions);
     renderInteractionSummary(currentInteractions, getActiveAffinity());
     render2DInteractionMap(currentInteractions);
+    if (showPocketResidues || showInteractingSidechains) {
+        applyPocketAndSidechainStyles();
+    }
     if (showLabels) {
         drawnLabels.forEach(l => viewer.removeLabel(l));
         drawnLabels = [];
         drawResidueLabels();
-        viewer.render();
     }
+    viewer.render();
 }
 
 function redrawInteractions() {
@@ -1239,13 +1250,7 @@ async function selectPose(result, key) {
 
     // Show pocket residues as sticks within 5A of ligand
     if (proteinModel !== null && ligandModels[key]) {
-        if (showPocketResidues) {
-            const pSpec = getProteinReprSpec();
-            viewer.setStyle(
-                {model: proteinModel, within: {distance: 5, sel: {model: ligandModels[key]}}},
-                {stick: {radius: 0.15, colorscheme: 'Jmol'}, ...pSpec}
-            );
-        }
+        applyPocketAndSidechainStyles();
         if (showLabels) {
             drawResidueLabels();
         }
@@ -1357,12 +1362,12 @@ function drawInteractions3D(interactions) {
                 const shape = viewer.addCylinder({
                     start: {x: p[0], y: p[1], z: p[2]},
                     end: {x: l[0], y: l[1], z: l[2]},
-                    radius: isNear ? 0.03 : 0.06,
+                    radius: isNear ? 0.04 : 0.08,
                     color: color,
-                    opacity: isNear ? 0.35 : 1.0,
+                    opacity: isNear ? 0.4 : 1.0,
                     dashed: true,
-                    dashLength: isNear ? 0.15 : 0.25,
-                    gapLength: isNear ? 0.25 : 0.15,
+                    dashLength: isNear ? 0.15 : 0.3,
+                    gapLength: isNear ? 0.25 : 0.12,
                     fromCap: 2,
                     toCap: 2,
                 });
@@ -1370,12 +1375,12 @@ function drawInteractions3D(interactions) {
 
                 if (item.distance && showDistances) {
                     const mid = {x: (p[0]+l[0])/2, y: (p[1]+l[1])/2, z: (p[2]+l[2])/2};
-                    const dl = viewer.addLabel(item.distance.toFixed(1)+' A', {
+                    const dl = viewer.addLabel(item.distance.toFixed(1)+' \u00C5', {
                         position: mid,
-                        fontSize: 9,
-                        fontColor: color,
-                        backgroundColor: '#ffffffcc',
-                        backgroundOpacity: 0.75,
+                        fontSize: 10,
+                        fontColor: '#ffffff',
+                        backgroundColor: '#000000',
+                        backgroundOpacity: 0.7,
                         borderRadius: 3,
                         padding: 2,
                         inFront: true,
@@ -1455,86 +1460,170 @@ function showAtomInspectPanel(atom) {
     panel.style.display = 'block';
 }
 
+function applyPocketAndSidechainStyles() {
+    if (!proteinModel || !activePoseKey || !ligandModels[activePoseKey]) return;
+    viewer.setStyle({model: proteinModel}, getProteinReprSpec());
+    if (showPocketResidues) {
+        drawPocketSideChains();
+    }
+    if (showInteractingSidechains) {
+        drawInteractingSidechains();
+    }
+}
+
+function drawPocketSideChains() {
+    if (!proteinModel || !activePoseKey || !ligandModels[activePoseKey]) return;
+
+    const ligAtoms = ligandModels[activePoseKey].selectedAtoms({});
+    if (!ligAtoms || ligAtoms.length === 0) return;
+    const protAtoms = proteinModel.selectedAtoms({});
+    if (!protAtoms || protAtoms.length === 0) return;
+
+    // Manual proximity loop — matches drawResidueLabels() exactly so the
+    // styled side-chain set is always identical to the labeled set. Using
+    // 3Dmol's built-in `within:` selector here returns fewer residues than
+    // this loop does for multi-model assemblies, leaving labeled residues
+    // without sticks.
+    const byChain = new Map();
+    for (const atom of protAtoms) {
+        let minD2 = Infinity;
+        for (const la of ligAtoms) {
+            const dx = atom.x - la.x, dy = atom.y - la.y, dz = atom.z - la.z;
+            const d2 = dx*dx + dy*dy + dz*dz;
+            if (d2 < minD2) {
+                minD2 = d2;
+                if (minD2 <= 36) break;
+            }
+        }
+        if (minD2 > 36) continue;
+        const chain = atom.chain || '';
+        let set = byChain.get(chain);
+        if (!set) { set = new Set(); byChain.set(chain, set); }
+        set.add(atom.resi);
+    }
+    if (byChain.size === 0) return;
+
+    byChain.forEach((resiSet, chain) => {
+        const sel = {model: proteinModel, resi: [...resiSet], not: {atom: ['N','CA','C','O','H','HA','HN']}};
+        if (chain) sel.chain = chain;
+        viewer.setStyle(sel, {stick: {radius: 0.18, colorscheme: 'grayCarbon'}, ...getProteinReprSpec()});
+    });
+}
+
+function drawInteractingSidechains() {
+    if (!proteinModel || !currentInteractions) return;
+
+    const protAtoms = proteinModel.selectedAtoms({});
+    if (!protAtoms || protAtoms.length === 0) return;
+
+    // Index atoms by residue number so we can resolve which chain each interaction is on.
+    // The interactions JSON only carries `protein_res` (e.g. "LYS58") and `protein_coords`,
+    // never a chain id. For multi-chain assemblies (amyloid stacks, dimers, etc.) we have
+    // to disambiguate via coordinates, otherwise resi-only selectors light up every chain.
+    const atomsByResi = new Map();
+    for (const a of protAtoms) {
+        let list = atomsByResi.get(a.resi);
+        if (!list) { list = []; atomsByResi.set(a.resi, list); }
+        list.push(a);
+    }
+
+    const filtered = applyTypeFilter(filterInteractions(currentInteractions));
+    const types = ['hydrogen_bonds', 'hydrophobic', 'salt_bridges', 'pi_stacking', 'pi_cation', 'halogen_bonds'];
+    const byChain = new Map();
+    types.forEach(type => {
+        if (!interactionToggles[type]) return;
+        (filtered[type] || []).forEach(item => {
+            if (!item.protein_res || !item.protein_coords) return;
+            const m = item.protein_res.match(/(\d+)$/);
+            if (!m) return;
+            const resi = parseInt(m[1], 10);
+            const candidates = atomsByResi.get(resi);
+            if (!candidates || candidates.length === 0) return;
+            const [px, py, pz] = item.protein_coords;
+            let best = null, bestD2 = Infinity;
+            for (const a of candidates) {
+                const dx = a.x - px, dy = a.y - py, dz = a.z - pz;
+                const d2 = dx*dx + dy*dy + dz*dz;
+                if (d2 < bestD2) { bestD2 = d2; best = a; }
+            }
+            if (!best) return;
+            const chain = best.chain || '';
+            let set = byChain.get(chain);
+            if (!set) { set = new Set(); byChain.set(chain, set); }
+            set.add(resi);
+        });
+    });
+
+    if (byChain.size === 0) return;
+
+    byChain.forEach((resiSet, chain) => {
+        const sel = {model: proteinModel, resi: [...resiSet], not: {atom: ['N','CA','C','O','H','HA','HN']}};
+        if (chain) sel.chain = chain;
+        viewer.setStyle(sel, {stick: {radius: 0.25, colorscheme: 'Jmol'}, ...getProteinReprSpec()});
+    });
+}
+
 function drawResidueLabels() {
     if (!proteinModel || !ligandModels[activePoseKey]) return;
+    if (!currentInteractions) return;
 
     const allAtoms = proteinModel.selectedAtoms({});
     if (!allAtoms || allAtoms.length === 0) return;
 
-    const ligModel = ligandModels[activePoseKey];
-    const ligAtoms = ligModel.selectedAtoms({});
-    if (!ligAtoms || ligAtoms.length === 0) return;
-
-    // Build set of residues to label from filtered interaction data
-    let targetResidues = null;
-    if (currentInteractions) {
-        const filtered = applyTypeFilter(filterInteractions(currentInteractions));
-        targetResidues = new Set();
-        const types = ['hydrogen_bonds', 'hydrophobic', 'salt_bridges', 'pi_stacking', 'pi_cation', 'halogen_bonds'];
-        types.forEach(type => {
-            (filtered[type] || []).forEach(item => {
-                if (item.protein_res) targetResidues.add(item.protein_res);
-            });
+    const filtered = applyTypeFilter(filterInteractions(currentInteractions));
+    const interactingResidues = new Map();
+    const types = ['hydrogen_bonds', 'salt_bridges', 'pi_stacking', 'pi_cation', 'hydrophobic', 'halogen_bonds'];
+    types.forEach(type => {
+        (filtered[type] || []).forEach(item => {
+            if (!item.protein_res || !item.protein_coords) return;
+            if (!interactingResidues.has(item.protein_res)) {
+                interactingResidues.set(item.protein_res, {
+                    coords: item.protein_coords,
+                    type: type,
+                });
+            }
         });
-    }
-
-    // For each residue, find the atom closest to the ligand for label placement
-    const residueBest = {};
-    allAtoms.forEach(atom => {
-        const resLabel = `${atom.resn}${atom.resi}`;
-
-        if (targetResidues) {
-            if (!targetResidues.has(resLabel)) return;
-        }
-
-        let minDist2 = Infinity;
-        ligAtoms.forEach(la => {
-            const dx = atom.x - la.x, dy = atom.y - la.y, dz = atom.z - la.z;
-            const d2 = dx*dx + dy*dy + dz*dz;
-            if (d2 < minDist2) minDist2 = d2;
-        });
-
-        if (!targetResidues && minDist2 > 25) return;
-
-        if (!residueBest[resLabel] || minDist2 < residueBest[resLabel].dist2) {
-            residueBest[resLabel] = {x: atom.x, y: atom.y, z: atom.z, dist2: minDist2};
-        }
     });
 
-    // Build residue-to-interaction-type map for coloring (using filtered data)
-    const residueTypeMap = {};
-    if (currentInteractions) {
-        const filteredForColors = filterInteractions(currentInteractions);
-        const priority = ['hydrogen_bonds', 'salt_bridges', 'pi_stacking', 'pi_cation', 'hydrophobic', 'halogen_bonds'];
-        priority.forEach(type => {
-            (filteredForColors[type] || []).forEach(item => {
-                if (item.protein_res && !residueTypeMap[item.protein_res]) {
-                    residueTypeMap[item.protein_res] = type;
-                }
-            });
-        });
+    if (interactingResidues.size === 0) return;
+
+    // Resolve chain for each interacting residue by matching protein_coords
+    // to actual atoms in the model
+    const atomsByResi = new Map();
+    for (const a of allAtoms) {
+        let list = atomsByResi.get(a.resi);
+        if (!list) { list = []; atomsByResi.set(a.resi, list); }
+        list.push(a);
     }
 
-    const LABEL_COLORS = {
-        hydrogen_bonds: {bg: '#b45309', fg: '#ffffff'},
-        hydrophobic:    {bg: '#047857', fg: '#ffffff'},
-        salt_bridges:   {bg: '#be185d', fg: '#ffffff'},
-        pi_stacking:    {bg: '#0e7490', fg: '#ffffff'},
-        pi_cation:      {bg: '#6d28d9', fg: '#ffffff'},
-        halogen_bonds:  {bg: '#b91c1c', fg: '#ffffff'},
-    };
+    interactingResidues.forEach((info, resLabel) => {
+        const m = resLabel.match(/(\d+)$/);
+        if (!m) return;
+        const resi = parseInt(m[1], 10);
+        const candidates = atomsByResi.get(resi);
+        if (!candidates || candidates.length === 0) return;
 
-    Object.entries(residueBest).forEach(([resLabel, pos]) => {
-        const itype = residueTypeMap[resLabel];
-        const colors = LABEL_COLORS[itype] || {bg: '#334155', fg: '#ffffff'};
-        const label = viewer.addLabel(resLabel, {
-            position: {x: pos.x, y: pos.y, z: pos.z},
-            fontSize: 11,
-            fontColor: colors.fg,
-            backgroundColor: colors.bg,
-            backgroundOpacity: 0.9,
+        const [px, py, pz] = info.coords;
+        let best = null, bestD2 = Infinity;
+        for (const a of candidates) {
+            const dx = a.x - px, dy = a.y - py, dz = a.z - pz;
+            const d2 = dx*dx + dy*dy + dz*dz;
+            if (d2 < bestD2) { bestD2 = d2; best = a; }
+        }
+        if (!best) return;
+
+        const chain = best.chain || '';
+        const text = chain ? `${resLabel}:${chain}` : resLabel;
+        const label = viewer.addLabel(text, {
+            position: {x: best.x, y: best.y, z: best.z},
+            fontSize: 12,
+            fontColor: '#ffffff',
+            backgroundColor: '#d97706',
+            backgroundOpacity: 0.92,
             borderRadius: 4,
-            padding: 3,
+            padding: 4,
+            alignment: 'topCenter',
+            inFront: true,
         });
         drawnLabels.push(label);
     });

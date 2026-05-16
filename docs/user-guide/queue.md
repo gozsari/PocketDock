@@ -84,7 +84,7 @@ The same redaction applies — no `name`, no `protein_file`, no `ligand_file`.
 
 ## Worker concurrency
 
-PocketDock's Celery worker runs at `--concurrency=2` by default ([docker-compose.yml](https://github.com/ozsari/pocketdock/blob/main/docker-compose.yml)), meaning two jobs can run in parallel. To match the queue page's ETA calculation:
+PocketDock's Celery worker runs at `--concurrency=2` by default ([docker-compose.yml](https://github.com/gozsari/PocketDock/blob/main/docker-compose.yml)), meaning two jobs can run in parallel. To match the queue page's ETA calculation:
 
 | Setting | Where | Default |
 |---------|-------|---------|
