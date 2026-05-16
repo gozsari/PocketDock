@@ -379,10 +379,10 @@ def _detect_interactions_geometry(protein_path: Path, ligand_pdb_path: Path) -> 
     """Detect protein-ligand interactions using coordinate geometry analysis."""
     import math
 
-    HBOND_DIST = 4.2
-    HYDROPHOBIC_DIST = 4.8
-    SALT_BRIDGE_DIST = 4.8
-    PI_STACK_DIST = 6.6
+    HBOND_DIST = 6.0
+    HYDROPHOBIC_DIST = 7.2
+    SALT_BRIDGE_DIST = 7.2
+    PI_STACK_DIST = 9.0
 
     HBOND_ELEMENTS = {"N", "O", "S"}
     HYDROPHOBIC_ELEMENTS = {"C"}
@@ -415,9 +415,9 @@ def _detect_interactions_geometry(protein_path: Path, ligand_pdb_path: Path) -> 
                 ["CD2", "CE2", "CE3", "CZ2", "CZ3", "CH2"]],
         "HIS": [["CG", "ND1", "CD2", "CE1", "NE2"]],
     }
-    PI_CATION_DIST = 7.2
+    PI_CATION_DIST = 9.0
     HALOGEN_ELEMENTS = {"CL", "BR", "I"}
-    HALOGEN_DIST = 4.8
+    HALOGEN_DIST = 6.0
     HALOGEN_ANGLE_MIN = 140
 
     interactions = {
@@ -533,7 +533,7 @@ def _detect_interactions_geometry(protein_path: Path, ligand_pdb_path: Path) -> 
         for la in lig_atoms:
             for pa in prot_atoms:
                 d = dist(la, pa)
-                res_label = f"{pa['resn']}{pa['resi']}"
+                res_label = f"{pa['resn']}{pa['resi']}:{pa['chain']}"
 
                 # H-bonds: N/O/S donor-acceptor pairs with complementarity check,
                 # deduplicated to closest contact per (residue, ligand_atom)
@@ -676,7 +676,7 @@ def _detect_interactions_geometry(protein_path: Path, ligand_pdb_path: Path) -> 
         # ── Pi-stacking: ring centroid-centroid distance + plane angle ──
         seen_pi = set()
         for pr in prot_rings:
-            res_label = f"{pr['resn']}{pr['resi']}"
+            res_label = f"{pr['resn']}{pr['resi']}:{pr['chain']}"
             if res_label in seen_pi:
                 continue
             for lr in lig_rings:
@@ -705,13 +705,13 @@ def _detect_interactions_geometry(protein_path: Path, ligand_pdb_path: Path) -> 
         prot_cations = []
         for (resn, resi, chain), atom_map in prot_by_res.items():
             if resn == "LYS" and "NZ" in atom_map:
-                prot_cations.append({"resn": resn, "resi": resi, "atom": atom_map["NZ"]})
+                prot_cations.append({"resn": resn, "resi": resi, "chain": chain, "atom": atom_map["NZ"]})
             elif resn == "ARG" and "CZ" in atom_map:
-                prot_cations.append({"resn": resn, "resi": resi, "atom": atom_map["CZ"]})
+                prot_cations.append({"resn": resn, "resi": resi, "chain": chain, "atom": atom_map["CZ"]})
 
         seen_pi_cation = set()
         for cat in prot_cations:
-            res_label = f"{cat['resn']}{cat['resi']}"
+            res_label = f"{cat['resn']}{cat['resi']}:{cat['chain']}"
             if res_label in seen_pi_cation:
                 continue
             for lr in lig_rings:
@@ -735,7 +735,7 @@ def _detect_interactions_geometry(protein_path: Path, ligand_pdb_path: Path) -> 
 
         lig_nitrogens = [a for a in lig_atoms if a["element"] == "N"]
         for pr in prot_rings:
-            res_label = f"{pr['resn']}{pr['resi']}"
+            res_label = f"{pr['resn']}{pr['resi']}:{pr['chain']}"
             if res_label in seen_pi_cation:
                 continue
             for ln in lig_nitrogens:
@@ -781,7 +781,7 @@ def _detect_interactions_geometry(protein_path: Path, ligand_pdb_path: Path) -> 
                 ang = angle_three_points(bonded_c, lh, pa)
                 if ang < HALOGEN_ANGLE_MIN:
                     continue
-                res_label = f"{pa['resn']}{pa['resi']}"
+                res_label = f"{pa['resn']}{pa['resi']}:{pa['chain']}"
                 hal_key = (res_label, lh["name"])
                 if hal_key not in best_hal or d < best_hal[hal_key]["distance"]:
                     best_hal[hal_key] = {
@@ -805,7 +805,7 @@ def _detect_interactions_geometry(protein_path: Path, ligand_pdb_path: Path) -> 
                 d = dist(la, pa)
                 if d <= NEARBY_DIST:
                     contacts.append({
-                        "protein_res": f"{pa['resn']}{pa['resi']}",
+                        "protein_res": f"{pa['resn']}{pa['resi']}:{pa['chain']}",
                         "protein_atom": pa["name"],
                         "distance": round(d, 2),
                         "element": pa["element"],

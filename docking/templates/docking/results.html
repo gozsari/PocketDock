@@ -246,7 +246,7 @@
                         <button class="viewer-control-btn" id="btn-distances" onclick="toggleDistances()">Distances</button>
                         <div style="position:relative;display:inline-block">
                             <button class="viewer-control-btn" id="btn-thresholds" onclick="toggleThresholdsPopover()" title="Per-type distance thresholds (&#197;)">Thresholds</button>
-                            <div id="thresholds-popover" style="display:none;position:absolute;bottom:100%;right:0;z-index:50;margin-bottom:6px;width:300px;background:#fff;border:1px solid #e2e8f0;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.12);padding:12px 14px;">
+                            <div id="thresholds-popover" style="display:none;position:fixed;z-index:9999;width:300px;background:#fff;border:1px solid #e2e8f0;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.12);padding:12px 14px;">
                                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
                                     <span style="font-weight:600;font-size:0.8rem;color:#334155">Distance Thresholds (&#197;)</span>
                                     <button onclick="resetThresholdDefaults()" style="font-size:0.65rem;color:#3b82f6;cursor:pointer;background:none;border:none;font-weight:500">Reset Defaults</button>
@@ -747,6 +747,9 @@ function toggleThresholdsPopover() {
     pop.style.display = visible ? 'none' : 'block';
     btn.classList.toggle('active', !visible);
     if (!visible) {
+        const rect = btn.getBoundingClientRect();
+        pop.style.left = rect.left + 'px';
+        pop.style.top = (rect.top - pop.offsetHeight - 6) + 'px';
         buildThresholdSliders();
         setTimeout(() => {
             document.addEventListener('click', closeThresholdsOnClickOutside);
@@ -873,7 +876,7 @@ function changeInteractionFilter(value) {
 function applyTypeFilter(filtered) {
     if (!filtered || interactionFilter === 'all') return filtered;
     const out = {};
-    const resName = r => (r || '').replace(/\d+/g, '');
+    const resName = r => (r || '').split(':')[0].replace(/\d+/g, '');
     for (const type of Object.keys(filtered)) {
         const items = filtered[type] || [];
         if (interactionFilter === 'aromatic') {
@@ -1528,38 +1531,18 @@ function drawInteractingSidechains() {
     const protAtoms = proteinModel.selectedAtoms({});
     if (!protAtoms || protAtoms.length === 0) return;
 
-    // Index atoms by residue number so we can resolve which chain each interaction is on.
-    // The interactions JSON only carries `protein_res` (e.g. "LYS58") and `protein_coords`,
-    // never a chain id. For multi-chain assemblies (amyloid stacks, dimers, etc.) we have
-    // to disambiguate via coordinates, otherwise resi-only selectors light up every chain.
-    const atomsByResi = new Map();
-    for (const a of protAtoms) {
-        let list = atomsByResi.get(a.resi);
-        if (!list) { list = []; atomsByResi.set(a.resi, list); }
-        list.push(a);
-    }
-
     const filtered = applyTypeFilter(filterInteractions(currentInteractions));
     const types = ['hydrogen_bonds', 'hydrophobic', 'salt_bridges', 'pi_stacking', 'pi_cation', 'halogen_bonds'];
     const byChain = new Map();
     types.forEach(type => {
         if (!interactionToggles[type]) return;
         (filtered[type] || []).forEach(item => {
-            if (!item.protein_res || !item.protein_coords) return;
-            const m = item.protein_res.match(/(\d+)$/);
+            if (!item.protein_res) return;
+            const parts = item.protein_res.split(':');
+            const chain = parts[1] || '';
+            const m = parts[0].match(/(\d+)/);
             if (!m) return;
             const resi = parseInt(m[1], 10);
-            const candidates = atomsByResi.get(resi);
-            if (!candidates || candidates.length === 0) return;
-            const [px, py, pz] = item.protein_coords;
-            let best = null, bestD2 = Infinity;
-            for (const a of candidates) {
-                const dx = a.x - px, dy = a.y - py, dz = a.z - pz;
-                const d2 = dx*dx + dy*dy + dz*dz;
-                if (d2 < bestD2) { bestD2 = d2; best = a; }
-            }
-            if (!best) return;
-            const chain = best.chain || '';
             let set = byChain.get(chain);
             if (!set) { set = new Set(); byChain.set(chain, set); }
             set.add(resi);
@@ -1599,8 +1582,6 @@ function drawResidueLabels() {
 
     if (interactingResidues.size === 0) return;
 
-    // Resolve chain for each interacting residue by matching protein_coords
-    // to actual atoms in the model
     const atomsByResi = new Map();
     for (const a of allAtoms) {
         let list = atomsByResi.get(a.resi);
@@ -1609,7 +1590,7 @@ function drawResidueLabels() {
     }
 
     interactingResidues.forEach((info, resLabel) => {
-        const m = resLabel.match(/(\d+)$/);
+        const m = resLabel.split(':')[0].match(/(\d+)/);
         if (!m) return;
         const resi = parseInt(m[1], 10);
         const candidates = atomsByResi.get(resi);
@@ -1624,18 +1605,17 @@ function drawResidueLabels() {
         }
         if (!best) return;
 
-        const chain = best.chain || '';
-        const text = chain ? `${resLabel}:${chain}` : resLabel;
-        const label = viewer.addLabel(text, {
+        const label = viewer.addLabel(resLabel, {
             position: {x: best.x, y: best.y, z: best.z},
-            fontSize: 12,
+            fontSize: 11,
             fontColor: '#ffffff',
             backgroundColor: '#d97706',
-            backgroundOpacity: 0.92,
+            backgroundOpacity: 0.65,
             borderRadius: 4,
-            padding: 4,
+            padding: 3,
             alignment: 'topCenter',
-            inFront: true,
+            screenOffset: {x: 0, y: -24},
+            inFront: false,
         });
         drawnLabels.push(label);
     });
@@ -1742,7 +1722,7 @@ function renderInteractionSummary(interactions, affinity) {
         let sentence = `<strong>${items.length}</strong> ${label} with ${residues.join(', ')}`;
         if (ligAtoms.length > 0 && ligAtoms[0] !== '-') sentence += ` (ligand ${ligAtoms.join(', ')})`;
         parts.push(sentence + '.');
-        residues.forEach(r => { const rn = r.replace(/\d+/g,''); if (AROMATIC_RES.has(rn)) aromaticResidues.add(r); });
+        residues.forEach(r => { const rn = r.split(':')[0].replace(/\d+/g,''); if (AROMATIC_RES.has(rn)) aromaticResidues.add(r); });
     });
 
     if (parts.length === 0) { el.style.display = 'none'; return; }
