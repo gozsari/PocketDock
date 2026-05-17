@@ -2,16 +2,25 @@ cff-version: 1.2.0
 message: "If you use PocketDock in your research, please cite it as below."
 title: "PocketDock: Automated Molecular Docking Pipeline"
 abstract: >-
-  A web-based tool that integrates P2Rank for binding pocket prediction and
-  AutoDock Vina for molecular docking, with interactive 3Dmol.js visualization.
+  A web-based molecular docking platform that predicts druggable binding pockets
+  with P2Rank, docks ligands with AutoDock Vina, and ranks results using a
+  combined score of pocket probability and binding affinity. PocketDock supports
+  batch ligand screening, ensemble receptor docking via normal-mode analysis or
+  short OpenMM molecular-dynamics simulations, ADMET property prediction with
+  RDKit, geometric protein–ligand interaction analysis, optional OpenMM pose
+  refinement, and approximate MM-GBSA rescoring. Results are presented through
+  interactive 3Dmol.js visualization and a REST API. The asynchronous pipeline
+  is built on Django, Celery, and Redis.
 type: software
 authors:
   - given-names: Gökhan
     family-names: ÖZSARI
     email: gokhan.ozsari@chalmers.se
     affiliation: Chalmers University of Technology
-version: "1.0.0"
-date-released: "2026-05-13"
+repository-code: "https://github.com/gozsari/PocketDock"
+url: "https://pocketdock.readthedocs.io/"
+version: "2.0.0"
+date-released: "2026-05-17"
 license: MIT
 keywords:
   - molecular-docking
@@ -21,3 +30,16 @@ keywords:
   - drug-discovery
   - django
   - cheminformatics
+  - virtual-screening
+  - binding-pocket-prediction
+  - ensemble-docking
+  - admet
+  - mm-gbsa
+  - openmm
+  - 3dmol
+  - rdkit
+  - interaction-analysis
+  - batch-docking
+  - rest-api
+  - celery
+  - docker
