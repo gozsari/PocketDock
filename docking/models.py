@@ -55,6 +55,14 @@ class DockingJob(models.Model):
         default=False,
         help_text="Compute MM-GBSA binding free energy for each pose",
     )
+    batch_id = models.CharField(
+        max_length=64, blank=True, default="", db_index=True,
+        help_text="Shared ID linking jobs in the same batch submission",
+    )
+    ligand_name = models.CharField(
+        max_length=255, blank=True, default="",
+        help_text="Molecule name / title for batch dashboard display",
+    )
     admet_properties = models.JSONField(
         default=dict,
         blank=True,

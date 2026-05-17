@@ -1,8 +1,12 @@
+import io
 import mimetypes
+import uuid
 from datetime import timedelta
 from pathlib import Path
 
 from django.conf import settings
+from django.core.files.base import ContentFile
+from django.db.models import Max, Min
 from django.http import FileResponse, Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
@@ -10,7 +14,7 @@ from django.views.decorators.http import require_http_methods
 
 from rest_framework.decorators import api_view
 
-from .forms import DockingJobForm
+from .forms import BatchDockingForm, DockingJobForm
 from .models import DockingJob, DockingResult, Pocket
 from .serializers import (
     DockingJobStatusSerializer,
@@ -57,21 +61,147 @@ def estimate_wait_seconds(job, concurrency=None):
 
 
 def upload_view(request):
+    mode = request.POST.get("mode", "single") if request.method == "POST" else "single"
+
+    if request.method == "POST" and mode == "batch":
+        return _handle_batch_upload(request)
+
     if request.method == "POST":
         form = DockingJobForm(request.POST, request.FILES)
         if form.is_valid():
             job = form.save()
             if not _enqueue_pipeline(job):
-                # Re-render the form with a clear error so the user knows to retry.
                 form.add_error(None,
                     "Job was created but could not be queued — the task broker is unreachable. "
                     "Please try again in a moment."
                 )
-                return render(request, "docking/upload.html", {"form": form})
+                return render(request, "docking/upload.html", {"form": form, "batch_form": BatchDockingForm()})
             return redirect("docking:job_detail", job_id=job.id)
     else:
         form = DockingJobForm()
-    return render(request, "docking/upload.html", {"form": form})
+    return render(request, "docking/upload.html", {"form": form, "batch_form": BatchDockingForm()})
+
+
+def _handle_batch_upload(request):
+    """Process a batch upload (multiple ligand files or multi-mol SDF)."""
+    batch_form = BatchDockingForm(request.POST, request.FILES)
+    if not batch_form.is_valid():
+        return render(request, "docking/upload.html", {
+            "form": DockingJobForm(),
+            "batch_form": batch_form,
+            "active_tab": "batch",
+        })
+
+    protein_file = batch_form.cleaned_data["protein_file"]
+    ligand_files = request.FILES.getlist("ligand_files")
+    params = {
+        "name": batch_form.cleaned_data.get("name", ""),
+        "num_pockets": batch_form.cleaned_data["num_pockets"],
+        "exhaustiveness": batch_form.cleaned_data["exhaustiveness"],
+        "scoring_function": batch_form.cleaned_data["scoring_function"],
+        "refine_poses": batch_form.cleaned_data.get("refine_poses", False),
+        "rescore_mmgbsa": batch_form.cleaned_data.get("rescore_mmgbsa", False),
+    }
+
+    ligands = []
+    for lf in ligand_files:
+        if lf.name.lower().endswith(".sdf") and lf.size > 0:
+            split = _split_multi_sdf(lf)
+            if split:
+                ligands.extend(split)
+            else:
+                lf.seek(0)
+                ligands.append((Path(lf.name).stem, lf.read(), lf.name))
+        else:
+            ligands.append((Path(lf.name).stem, lf.read(), lf.name))
+
+    if not ligands:
+        batch_form.add_error(None, "No valid ligands found in the uploaded files.")
+        return render(request, "docking/upload.html", {
+            "form": DockingJobForm(),
+            "batch_form": batch_form,
+            "active_tab": "batch",
+        })
+
+    batch_id = _create_batch_jobs(protein_file, ligands, params)
+    if batch_id is None:
+        batch_form.add_error(None,
+            "Batch was created but could not be queued — the task broker is unreachable. "
+            "Please try again in a moment."
+        )
+        return render(request, "docking/upload.html", {
+            "form": DockingJobForm(),
+            "batch_form": batch_form,
+            "active_tab": "batch",
+        })
+
+    return redirect("docking:batch_detail", batch_id=batch_id)
+
+
+def _split_multi_sdf(sdf_file):
+    """
+    Split an SDF file into individual molecules.
+    Returns list of (name, sdf_bytes, filename) tuples, or empty list if
+    the file contains only one molecule.
+    """
+    sdf_file.seek(0)
+    raw = sdf_file.read()
+    if isinstance(raw, str):
+        raw = raw.encode("utf-8")
+
+    blocks = []
+    current = []
+    for line in raw.decode("utf-8", errors="replace").splitlines(True):
+        current.append(line)
+        if line.strip() == "$$$$":
+            blocks.append("".join(current))
+            current = []
+
+    if len(blocks) <= 1:
+        return []
+
+    results = []
+    for i, block in enumerate(blocks):
+        lines = block.splitlines()
+        mol_name = lines[0].strip() if lines and lines[0].strip() else f"mol_{i + 1}"
+        filename = f"{mol_name}.sdf"
+        results.append((mol_name, block.encode("utf-8"), filename))
+    return results
+
+
+def _create_batch_jobs(protein_file, ligands, params):
+    """
+    Create one DockingJob per ligand, all sharing the same batch_id.
+    Returns the batch_id on success, or None if enqueueing fails.
+    """
+    batch_id = uuid.uuid4().hex[:12]
+    protein_bytes = protein_file.read()
+    protein_name = protein_file.name
+    batch_name = params.get("name", "")
+
+    jobs = []
+    for lig_name, lig_content, lig_filename in ligands:
+        job = DockingJob(
+            name=f"{batch_name} - {lig_name}" if batch_name else lig_name,
+            batch_id=batch_id,
+            ligand_name=lig_name,
+            num_pockets=params["num_pockets"],
+            exhaustiveness=params["exhaustiveness"],
+            scoring_function=params["scoring_function"],
+            refine_poses=params.get("refine_poses", False),
+            rescore_mmgbsa=params.get("rescore_mmgbsa", False),
+        )
+        job.save()
+        job.protein_file.save(protein_name, ContentFile(protein_bytes), save=True)
+        job.ligand_file.save(lig_filename, ContentFile(lig_content), save=True)
+        jobs.append(job)
+
+    enqueued = 0
+    for job in jobs:
+        if _enqueue_pipeline(job):
+            enqueued += 1
+
+    return batch_id if enqueued > 0 else None
 
 
 def _enqueue_pipeline(job):
@@ -170,6 +300,94 @@ def api_serve_file(request, job_id, filename):
         return FileResponse(open(safe_path, "rb"), content_type=content_type)
     except OSError:
         raise Http404(f"Cannot read file: {filename}")
+
+
+# ---------------------------------------------------------------------------
+# Batch views
+# ---------------------------------------------------------------------------
+def batch_detail_view(request, batch_id):
+    """Render the batch dashboard for all jobs sharing a batch_id."""
+    jobs = DockingJob.objects.filter(batch_id=batch_id).order_by("id")
+    if not jobs.exists():
+        raise Http404("Batch not found.")
+
+    first_job = jobs.first()
+    total = jobs.count()
+    completed = jobs.filter(status="completed").count()
+    failed = jobs.filter(status="failed").count()
+    running = jobs.filter(status__in=RUNNING_STATUSES).count()
+    pending = jobs.filter(status="pending").count()
+
+    job_summaries = []
+    for job in jobs:
+        best = DockingResult.objects.filter(
+            pocket__job=job
+        ).aggregate(
+            best_affinity=Min("affinity"),
+            best_score=Max("combined_score"),
+        )
+        job_summaries.append({
+            "job": job,
+            "best_affinity": best["best_affinity"],
+            "best_score": best["best_score"],
+        })
+
+    ctx = {
+        "batch_id": batch_id,
+        "batch_name": first_job.name.rsplit(" - ", 1)[0] if " - " in first_job.name else "",
+        "protein_filename": first_job.protein_filename,
+        "total": total,
+        "completed": completed,
+        "failed": failed,
+        "running": running,
+        "pending": pending,
+        "progress_pct": int(100 * (completed + failed) / total) if total else 0,
+        "all_done": (completed + failed) == total,
+        "job_summaries": job_summaries,
+        "first_job": first_job,
+    }
+    return render(request, "docking/batch.html", ctx)
+
+
+@api_view(["GET"])
+def api_batch_status(request, batch_id):
+    """JSON endpoint returning status of all jobs in a batch."""
+    jobs = DockingJob.objects.filter(batch_id=batch_id).order_by("id")
+    if not jobs.exists():
+        return JsonResponse({"error": "Batch not found"}, status=404)
+
+    total = jobs.count()
+    completed = jobs.filter(status="completed").count()
+    failed = jobs.filter(status="failed").count()
+
+    job_list = []
+    for job in jobs:
+        best = DockingResult.objects.filter(
+            pocket__job=job
+        ).aggregate(
+            best_affinity=Min("affinity"),
+            best_score=Max("combined_score"),
+        )
+        job_list.append({
+            "id": job.id,
+            "ligand_name": job.ligand_name,
+            "status": job.status,
+            "status_display": job.get_status_display(),
+            "best_affinity": best["best_affinity"],
+            "best_score": round(best["best_score"], 3) if best["best_score"] else None,
+        })
+
+    return JsonResponse({
+        "batch_id": batch_id,
+        "total": total,
+        "completed": completed,
+        "failed": failed,
+        "running": total - completed - failed - jobs.filter(status="pending").count(),
+        "pending": jobs.filter(status="pending").count(),
+        "progress_pct": int(100 * (completed + failed) / total) if total else 0,
+        "all_done": (completed + failed) == total,
+        "jobs": job_list,
+    })
 
 
 # ---------------------------------------------------------------------------

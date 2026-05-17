@@ -1,0 +1,212 @@
+{% extends "docking/base.html" %}
+{% block title %}PocketDock - Batch {{ batch_id }}{% endblock %}
+
+{% block content %}
+<div class="max-w-5xl mx-auto px-4 py-12">
+    <!-- Header -->
+    <div class="text-center mb-8">
+        <h1 class="text-3xl font-bold text-gray-900 mb-2">
+            {{ batch_name|default:"Batch Docking" }}
+        </h1>
+        <p class="text-gray-500">
+            Batch {{ batch_id }} &middot; {{ total }} ligand{{ total|pluralize }}
+            &middot; Protein: {{ protein_filename }}
+        </p>
+    </div>
+
+    <!-- Progress Card -->
+    <div class="bg-white rounded-xl border border-gray-200 p-6 mb-8">
+        <div class="flex items-center justify-between mb-4">
+            <h3 class="text-sm font-semibold text-gray-700">Progress</h3>
+            <span class="text-sm font-medium text-gray-500" id="progress-text">
+                {{ completed }}/{{ total }} completed
+                {% if failed %} &middot; {{ failed }} failed{% endif %}
+            </span>
+        </div>
+        <div class="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
+            <div id="progress-bar"
+                 class="h-full rounded-full transition-all duration-500
+                        {% if failed and completed == 0 %}bg-red-500
+                        {% elif all_done %}bg-green-500
+                        {% else %}bg-gradient-to-r from-blue-500 to-purple-500{% endif %}"
+                 style="width: {{ progress_pct }}%"></div>
+        </div>
+        <div class="flex justify-between mt-3 text-xs text-gray-500">
+            <span>
+                <span class="inline-block w-2 h-2 rounded-full bg-green-500 mr-1"></span>
+                Completed: <strong id="count-completed">{{ completed }}</strong>
+            </span>
+            <span>
+                <span class="inline-block w-2 h-2 rounded-full bg-blue-500 animate-pulse mr-1"></span>
+                Running: <strong id="count-running">{{ running }}</strong>
+            </span>
+            <span>
+                <span class="inline-block w-2 h-2 rounded-full bg-gray-400 mr-1"></span>
+                Pending: <strong id="count-pending">{{ pending }}</strong>
+            </span>
+            {% if failed %}
+            <span>
+                <span class="inline-block w-2 h-2 rounded-full bg-red-500 mr-1"></span>
+                Failed: <strong id="count-failed">{{ failed }}</strong>
+            </span>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Actions -->
+    <div class="flex justify-end gap-3 mb-4">
+        <button onclick="downloadCSV()" class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+            Download CSV
+        </button>
+        <a href="{% url 'docking:upload' %}" class="px-4 py-2 text-sm font-medium text-white bg-blue-500 rounded-lg hover:bg-blue-600 transition-colors">
+            New Job
+        </a>
+    </div>
+
+    <!-- Results Table -->
+    <div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <table class="w-full text-sm" id="batch-table">
+            <thead>
+                <tr class="bg-gray-50 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                    <th class="px-4 py-3 cursor-pointer hover:text-gray-700" onclick="sortTable(0)">#</th>
+                    <th class="px-4 py-3 cursor-pointer hover:text-gray-700" onclick="sortTable(1)">Ligand</th>
+                    <th class="px-4 py-3 cursor-pointer hover:text-gray-700" onclick="sortTable(2)">Status</th>
+                    <th class="px-4 py-3 cursor-pointer hover:text-gray-700" onclick="sortTable(3)">Best Affinity</th>
+                    <th class="px-4 py-3 cursor-pointer hover:text-gray-700" onclick="sortTable(4)">Best Score</th>
+                    <th class="px-4 py-3">Actions</th>
+                </tr>
+            </thead>
+            <tbody id="batch-tbody">
+                {% for item in job_summaries %}
+                <tr class="border-t border-gray-100 hover:bg-gray-50 transition-colors"
+                    data-job-id="{{ item.job.id }}">
+                    <td class="px-4 py-3 text-gray-400">{{ forloop.counter }}</td>
+                    <td class="px-4 py-3 font-medium text-gray-900">{{ item.job.ligand_name|default:item.job.ligand_filename }}</td>
+                    <td class="px-4 py-3">
+                        {% if item.job.status == 'completed' %}
+                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">Completed</span>
+                        {% elif item.job.status == 'failed' %}
+                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">Failed</span>
+                        {% elif item.job.status == 'pending' %}
+                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">Pending</span>
+                        {% else %}
+                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                            <span class="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse mr-1"></span>
+                            Running
+                        </span>
+                        {% endif %}
+                    </td>
+                    <td class="px-4 py-3 text-gray-700 tabular-nums">
+                        {% if item.best_affinity is not None %}{{ item.best_affinity|floatformat:1 }}{% else %}&mdash;{% endif %}
+                    </td>
+                    <td class="px-4 py-3 text-gray-700 tabular-nums">
+                        {% if item.best_score is not None %}{{ item.best_score|floatformat:3 }}{% else %}&mdash;{% endif %}
+                    </td>
+                    <td class="px-4 py-3">
+                        {% if item.job.status == 'completed' %}
+                        <a href="{% url 'docking:job_detail' item.job.id %}?view=results"
+                           class="text-blue-600 hover:text-blue-800 text-xs font-medium">View Results</a>
+                        {% elif item.job.status == 'failed' %}
+                        <a href="{% url 'docking:job_detail' item.job.id %}"
+                           class="text-red-600 hover:text-red-800 text-xs font-medium">Details</a>
+                        {% else %}
+                        <a href="{% url 'docking:job_detail' item.job.id %}"
+                           class="text-gray-500 hover:text-gray-700 text-xs font-medium">Status</a>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function() {
+    const BATCH_ID = '{{ batch_id }}';
+    const allDone = {{ all_done|yesno:"true,false" }};
+    let delay = 5000;
+
+    function poll() {
+        if (allDone) return;
+        setTimeout(function() {
+            fetch('/api/batch/' + BATCH_ID + '/')
+                .then(r => r.json())
+                .then(data => {
+                    if (data.all_done || data.progress_pct >= 100) {
+                        window.location.reload();
+                        return;
+                    }
+                    document.getElementById('progress-bar').style.width = data.progress_pct + '%';
+                    document.getElementById('progress-text').textContent =
+                        data.completed + '/' + data.total + ' completed' +
+                        (data.failed ? ' \u00b7 ' + data.failed + ' failed' : '');
+                    document.getElementById('count-completed').textContent = data.completed;
+                    document.getElementById('count-running').textContent = data.running;
+                    document.getElementById('count-pending').textContent = data.pending;
+                    const failedEl = document.getElementById('count-failed');
+                    if (failedEl) failedEl.textContent = data.failed;
+
+                    for (const j of data.jobs) {
+                        const row = document.querySelector(`tr[data-job-id="${j.id}"]`);
+                        if (!row) continue;
+                        const statusCell = row.cells[2];
+                        if (j.status === 'completed') {
+                            statusCell.innerHTML = '<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">Completed</span>';
+                            row.cells[5].innerHTML = '<a href="/jobs/' + j.id + '/?view=results" class="text-blue-600 hover:text-blue-800 text-xs font-medium">View Results</a>';
+                        } else if (j.status === 'failed') {
+                            statusCell.innerHTML = '<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">Failed</span>';
+                        }
+                        if (j.best_affinity !== null) row.cells[3].textContent = j.best_affinity.toFixed(1);
+                        if (j.best_score !== null) row.cells[4].textContent = j.best_score.toFixed(3);
+                    }
+                    poll();
+                })
+                .catch(() => {
+                    delay = Math.min(delay * 1.5, 30000);
+                    poll();
+                });
+        }, delay);
+    }
+    poll();
+
+    let sortDir = {};
+    window.sortTable = function(col) {
+        const tbody = document.getElementById('batch-tbody');
+        const rows = Array.from(tbody.querySelectorAll('tr'));
+        sortDir[col] = !(sortDir[col] || false);
+        const asc = sortDir[col] ? 1 : -1;
+
+        rows.sort((a, b) => {
+            let va = a.cells[col].textContent.trim();
+            let vb = b.cells[col].textContent.trim();
+            const na = parseFloat(va), nb = parseFloat(vb);
+            if (!isNaN(na) && !isNaN(nb)) return (na - nb) * asc;
+            if (va === '\u2014') va = '';
+            if (vb === '\u2014') vb = '';
+            return va.localeCompare(vb) * asc;
+        });
+        rows.forEach(r => tbody.appendChild(r));
+    };
+
+    window.downloadCSV = function() {
+        const rows = document.querySelectorAll('#batch-table tbody tr');
+        let csv = 'Ligand,Status,Best Affinity (kcal/mol),Best Score\n';
+        rows.forEach(r => {
+            const name = r.cells[1].textContent.trim();
+            const status = r.cells[2].textContent.trim();
+            const aff = r.cells[3].textContent.trim();
+            const score = r.cells[4].textContent.trim();
+            csv += `"${name}","${status}","${aff === '\u2014' ? '' : aff}","${score === '\u2014' ? '' : score}"\n`;
+        });
+        const blob = new Blob([csv], {type: 'text/csv'});
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'batch_' + BATCH_ID + '_results.csv';
+        a.click();
+    };
+})();
+</script>
+{% endblock %}

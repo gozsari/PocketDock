@@ -6,14 +6,31 @@
     <div class="text-center mb-10">
         <h1 class="text-4xl font-bold text-gray-900 mb-3">Molecular Docking Pipeline</h1>
         <p class="text-lg text-gray-600">
-            Upload a protein structure and a compound to run automated pocket detection and docking.
+            Upload a protein structure and one or more compounds to run automated pocket detection and docking.
         </p>
     </div>
 
-    <form method="post" enctype="multipart/form-data" class="space-y-8" id="upload-form">
-        {% csrf_token %}
+    <!-- Tab Toggle -->
+    <div class="flex justify-center mb-8">
+        <div class="inline-flex rounded-lg border border-gray-200 bg-white p-1 shadow-sm">
+            <button type="button" id="tab-single"
+                    class="px-5 py-2 text-sm font-medium rounded-md transition-all"
+                    onclick="switchTab('single')">
+                Single Ligand
+            </button>
+            <button type="button" id="tab-batch"
+                    class="px-5 py-2 text-sm font-medium rounded-md transition-all"
+                    onclick="switchTab('batch')">
+                Batch Docking
+            </button>
+        </div>
+    </div>
 
-        <!-- Job Name -->
+    <!-- ====== Single Ligand Form ====== -->
+    <form method="post" enctype="multipart/form-data" class="space-y-8" id="single-form">
+        {% csrf_token %}
+        <input type="hidden" name="mode" value="single">
+
         <div>
             <label for="id_name" class="block text-sm font-semibold text-gray-700 mb-1">
                 Job Name <span class="text-gray-400 font-normal">(optional)</span>
@@ -24,12 +41,10 @@
             {% endif %}
         </div>
 
-        <!-- File Uploads -->
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <!-- Protein Upload -->
             <div>
                 <label class="block text-sm font-semibold text-gray-700 mb-2">Protein Structure</label>
-                <div id="protein-drop-zone"
+                <div id="protein-drop-zone-single"
                      class="relative border-2 border-dashed border-gray-300 rounded-xl p-8 text-center
                             hover:border-blue-400 hover:bg-blue-50 transition-all cursor-pointer"
                      onclick="document.getElementById('protein-file-input').click()">
@@ -37,7 +52,7 @@
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
                               d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
                     </svg>
-                    <p class="text-sm text-gray-600 mb-1" id="protein-label">Drop PDB/CIF file or click to browse</p>
+                    <p class="text-sm text-gray-600 mb-1" id="protein-label-single">Drop PDB/CIF file or click to browse</p>
                     <p class="text-xs text-gray-400">.pdb, .pdb.gz, .cif</p>
                     {{ form.protein_file }}
                 </div>
@@ -45,11 +60,9 @@
                 <p class="mt-1 text-sm text-red-600">{{ form.protein_file.errors.0 }}</p>
                 {% endif %}
             </div>
-
-            <!-- Ligand Upload -->
             <div>
                 <label class="block text-sm font-semibold text-gray-700 mb-2">Compound / Ligand</label>
-                <div id="ligand-drop-zone"
+                <div id="ligand-drop-zone-single"
                      class="relative border-2 border-dashed border-gray-300 rounded-xl p-8 text-center
                             hover:border-purple-400 hover:bg-purple-50 transition-all cursor-pointer"
                      onclick="document.getElementById('ligand-file-input').click()">
@@ -57,7 +70,7 @@
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
                               d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
                     </svg>
-                    <p class="text-sm text-gray-600 mb-1" id="ligand-label">Drop SDF/MOL2 file or click to browse</p>
+                    <p class="text-sm text-gray-600 mb-1" id="ligand-label-single">Drop SDF/MOL2 file or click to browse</p>
                     <p class="text-xs text-gray-400">.sdf, .mol2, .mol</p>
                     {{ form.ligand_file }}
                 </div>
@@ -67,70 +80,47 @@
             </div>
         </div>
 
-        <!-- Parameters -->
         <div class="bg-white rounded-xl border border-gray-200 p-6">
             <h3 class="text-sm font-semibold text-gray-700 mb-4">Docking Parameters</h3>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
-                    <label for="id_num_pockets" class="block text-sm text-gray-600 mb-1">
-                        Number of Pockets to Dock
-                    </label>
+                    <label for="id_num_pockets" class="block text-sm text-gray-600 mb-1">Number of Pockets to Dock</label>
                     {{ form.num_pockets }}
                     <p class="mt-1 text-xs text-gray-400">Top N pockets from P2Rank (1-20)</p>
                 </div>
                 <div>
-                    <label for="id_exhaustiveness" class="block text-sm text-gray-600 mb-1">
-                        Vina Exhaustiveness
-                    </label>
+                    <label for="id_exhaustiveness" class="block text-sm text-gray-600 mb-1">Vina Exhaustiveness</label>
                     {{ form.exhaustiveness }}
                     <p class="mt-1 text-xs text-gray-400">Higher = more thorough but slower (1-64)</p>
                 </div>
             </div>
             <div class="mt-4">
-                <label for="id_scoring_function" class="block text-sm text-gray-600 mb-1">
-                    Scoring Function
-                </label>
+                <label for="id_scoring_function" class="block text-sm text-gray-600 mb-1">Scoring Function</label>
                 {{ form.scoring_function }}
-                <p class="mt-1 text-xs text-gray-400">Vina (default) or Vinardo (knowledge-based, sometimes better for polar interactions)</p>
+                <p class="mt-1 text-xs text-gray-400">Vina (default) or Vinardo (knowledge-based)</p>
             </div>
         </div>
 
-        <!-- Post-Docking Refinement -->
         <div class="bg-white rounded-xl border border-gray-200 p-6">
             <h3 class="text-sm font-semibold text-gray-700 mb-4">Post-Docking Refinement</h3>
             <div class="flex items-start gap-3">
                 {{ form.refine_poses }}
                 <div>
-                    <label for="id_refine_poses" class="text-sm text-gray-700 font-medium cursor-pointer">
-                        Refine poses with energy minimization
-                    </label>
-                    <p class="mt-1 text-xs text-gray-400">
-                        Run OpenMM energy minimization on docked poses to improve geometry (~30-60s extra per pose)
-                    </p>
+                    <label for="id_refine_poses" class="text-sm text-gray-700 font-medium cursor-pointer">Refine poses with energy minimization</label>
+                    <p class="mt-1 text-xs text-gray-400">Run OpenMM energy minimization on docked poses to improve geometry</p>
                 </div>
             </div>
-            {% if form.refine_poses.errors %}
-            <p class="mt-2 text-sm text-red-600">{{ form.refine_poses.errors.0 }}</p>
-            {% endif %}
             <div class="flex items-start gap-3 mt-4">
                 {{ form.rescore_mmgbsa }}
                 <div>
-                    <label for="id_rescore_mmgbsa" class="text-sm text-gray-700 font-medium cursor-pointer">
-                        MM-GBSA rescoring
-                    </label>
-                    <p class="mt-1 text-xs text-gray-400">
-                        Compute binding free energy using MM-GBSA (more accurate than Vina scoring, ~30-60s extra per pose)
-                    </p>
+                    <label for="id_rescore_mmgbsa" class="text-sm text-gray-700 font-medium cursor-pointer">MM-GBSA rescoring</label>
+                    <p class="mt-1 text-xs text-gray-400">Compute binding free energy using MM-GBSA</p>
                 </div>
             </div>
-            {% if form.rescore_mmgbsa.errors %}
-            <p class="mt-2 text-sm text-red-600">{{ form.rescore_mmgbsa.errors.0 }}</p>
-            {% endif %}
         </div>
 
-        <!-- Submit -->
         <div class="flex justify-center">
-            <button type="submit" id="submit-btn"
+            <button type="submit" id="submit-btn-single"
                     class="px-8 py-3 bg-gradient-to-r from-blue-500 to-purple-600 text-white font-semibold
                            rounded-xl shadow-lg hover:shadow-xl transform hover:-translate-y-0.5
                            transition-all duration-200 text-lg">
@@ -146,56 +136,198 @@
         </div>
         {% endif %}
     </form>
+
+    <!-- ====== Batch Docking Form ====== -->
+    <form method="post" enctype="multipart/form-data" class="space-y-8 hidden" id="batch-form">
+        {% csrf_token %}
+        <input type="hidden" name="mode" value="batch">
+
+        <div>
+            <label class="block text-sm font-semibold text-gray-700 mb-1">
+                Batch Name <span class="text-gray-400 font-normal">(optional)</span>
+            </label>
+            {{ batch_form.name }}
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+                <label class="block text-sm font-semibold text-gray-700 mb-2">Protein Structure</label>
+                <div id="protein-drop-zone-batch"
+                     class="relative border-2 border-dashed border-gray-300 rounded-xl p-8 text-center
+                            hover:border-blue-400 hover:bg-blue-50 transition-all cursor-pointer"
+                     onclick="document.getElementById('protein-file-input-batch').click()">
+                    <svg class="mx-auto h-12 w-12 text-gray-400 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                              d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+                    </svg>
+                    <p class="text-sm text-gray-600 mb-1" id="protein-label-batch">Drop PDB/CIF file or click to browse</p>
+                    <p class="text-xs text-gray-400">.pdb, .pdb.gz, .cif</p>
+                    <input type="file" name="protein_file" class="hidden" accept=".pdb,.pdb.gz,.cif" id="protein-file-input-batch">
+                </div>
+                {% if batch_form.protein_file.errors %}
+                <p class="mt-1 text-sm text-red-600">{{ batch_form.protein_file.errors.0 }}</p>
+                {% endif %}
+            </div>
+            <div>
+                <label class="block text-sm font-semibold text-gray-700 mb-2">Ligand Library</label>
+                <div id="ligand-drop-zone-batch"
+                     class="relative border-2 border-dashed border-gray-300 rounded-xl p-8 text-center
+                            hover:border-purple-400 hover:bg-purple-50 transition-all cursor-pointer"
+                     onclick="document.getElementById('ligand-file-input-batch').click()">
+                    <svg class="mx-auto h-12 w-12 text-gray-400 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                              d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                    </svg>
+                    <p class="text-sm text-gray-600 mb-1" id="ligand-label-batch">Drop SDF/MOL2 files or a multi-mol SDF</p>
+                    <p class="text-xs text-gray-400">Multiple .sdf/.mol2/.mol files, or one multi-molecule SDF (max 100)</p>
+                    <input type="file" name="ligand_files" class="hidden" accept=".sdf,.mol2,.mol" id="ligand-file-input-batch" multiple>
+                </div>
+                {% if batch_form.ligand_files.errors %}
+                <p class="mt-1 text-sm text-red-600">{{ batch_form.ligand_files.errors.0 }}</p>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="bg-white rounded-xl border border-gray-200 p-6">
+            <h3 class="text-sm font-semibold text-gray-700 mb-4">Docking Parameters</h3>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                    <label class="block text-sm text-gray-600 mb-1">Number of Pockets to Dock</label>
+                    {{ batch_form.num_pockets }}
+                    <p class="mt-1 text-xs text-gray-400">Top N pockets from P2Rank (1-20)</p>
+                </div>
+                <div>
+                    <label class="block text-sm text-gray-600 mb-1">Vina Exhaustiveness</label>
+                    {{ batch_form.exhaustiveness }}
+                    <p class="mt-1 text-xs text-gray-400">Higher = more thorough but slower (1-64)</p>
+                </div>
+            </div>
+            <div class="mt-4">
+                <label class="block text-sm text-gray-600 mb-1">Scoring Function</label>
+                {{ batch_form.scoring_function }}
+                <p class="mt-1 text-xs text-gray-400">Vina (default) or Vinardo (knowledge-based)</p>
+            </div>
+        </div>
+
+        <div class="bg-white rounded-xl border border-gray-200 p-6">
+            <h3 class="text-sm font-semibold text-gray-700 mb-4">Post-Docking Refinement</h3>
+            <div class="flex items-start gap-3">
+                {{ batch_form.refine_poses }}
+                <div>
+                    <label for="id_refine_poses" class="text-sm text-gray-700 font-medium cursor-pointer">Refine poses with energy minimization</label>
+                    <p class="mt-1 text-xs text-gray-400">Run OpenMM energy minimization on docked poses</p>
+                </div>
+            </div>
+            <div class="flex items-start gap-3 mt-4">
+                {{ batch_form.rescore_mmgbsa }}
+                <div>
+                    <label for="id_rescore_mmgbsa" class="text-sm text-gray-700 font-medium cursor-pointer">MM-GBSA rescoring</label>
+                    <p class="mt-1 text-xs text-gray-400">Compute binding free energy using MM-GBSA</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="flex justify-center">
+            <button type="submit" id="submit-btn-batch"
+                    class="px-8 py-3 bg-gradient-to-r from-purple-500 to-pink-600 text-white font-semibold
+                           rounded-xl shadow-lg hover:shadow-xl transform hover:-translate-y-0.5
+                           transition-all duration-200 text-lg">
+                Start Batch Docking
+            </button>
+        </div>
+
+        {% if batch_form.non_field_errors %}
+        <div class="bg-red-50 border border-red-200 rounded-lg p-4">
+            {% for error in batch_form.non_field_errors %}
+            <p class="text-sm text-red-600">{{ error }}</p>
+            {% endfor %}
+        </div>
+        {% endif %}
+    </form>
 </div>
 {% endblock %}
 
 {% block extra_js %}
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    function setupDropZone(zoneId, inputId, labelId) {
+    const ACTIVE_TAB = '{{ active_tab|default:"single" }}';
+
+    function setupDropZone(zoneId, inputId, labelId, multi) {
         const zone = document.getElementById(zoneId);
         const input = document.getElementById(inputId);
         const label = document.getElementById(labelId);
+        if (!zone || !input || !label) return;
 
         ['dragenter', 'dragover'].forEach(evt => {
-            zone.addEventListener(evt, e => {
-                e.preventDefault();
-                zone.classList.add('border-blue-400', 'bg-blue-50');
-            });
+            zone.addEventListener(evt, e => { e.preventDefault(); zone.classList.add('border-blue-400', 'bg-blue-50'); });
         });
         ['dragleave', 'drop'].forEach(evt => {
-            zone.addEventListener(evt, e => {
-                e.preventDefault();
-                zone.classList.remove('border-blue-400', 'bg-blue-50');
-            });
+            zone.addEventListener(evt, e => { e.preventDefault(); zone.classList.remove('border-blue-400', 'bg-blue-50'); });
         });
 
         zone.addEventListener('drop', e => {
             const files = e.dataTransfer.files;
             if (files.length > 0) {
                 input.files = files;
-                label.textContent = files[0].name;
-                label.classList.add('text-blue-600', 'font-medium');
+                updateLabel(label, files, multi);
             }
         });
-
         input.addEventListener('change', () => {
-            if (input.files.length > 0) {
-                label.textContent = input.files[0].name;
-                label.classList.add('text-blue-600', 'font-medium');
-            }
+            if (input.files.length > 0) updateLabel(label, input.files, multi);
         });
     }
 
-    setupDropZone('protein-drop-zone', 'protein-file-input', 'protein-label');
-    setupDropZone('ligand-drop-zone', 'ligand-file-input', 'ligand-label');
+    function updateLabel(label, files, multi) {
+        if (multi && files.length > 1) {
+            label.textContent = files.length + ' files selected';
+        } else {
+            label.textContent = files[0].name;
+        }
+        label.classList.add('text-blue-600', 'font-medium');
+    }
 
-    document.getElementById('upload-form').addEventListener('submit', function() {
-        const btn = document.getElementById('submit-btn');
-        btn.disabled = true;
-        btn.textContent = 'Submitting...';
-        btn.classList.add('opacity-50');
-    });
+    setupDropZone('protein-drop-zone-single', 'protein-file-input', 'protein-label-single', false);
+    setupDropZone('ligand-drop-zone-single', 'ligand-file-input', 'ligand-label-single', false);
+    setupDropZone('protein-drop-zone-batch', 'protein-file-input-batch', 'protein-label-batch', false);
+    setupDropZone('ligand-drop-zone-batch', 'ligand-file-input-batch', 'ligand-label-batch', true);
+
+    function disableOnSubmit(formId, btnId) {
+        const form = document.getElementById(formId);
+        if (!form) return;
+        form.addEventListener('submit', function() {
+            const btn = document.getElementById(btnId);
+            btn.disabled = true;
+            btn.textContent = 'Submitting...';
+            btn.classList.add('opacity-50');
+        });
+    }
+    disableOnSubmit('single-form', 'submit-btn-single');
+    disableOnSubmit('batch-form', 'submit-btn-batch');
+
+    window.switchTab = function(tab) {
+        const singleForm = document.getElementById('single-form');
+        const batchForm = document.getElementById('batch-form');
+        const tabSingle = document.getElementById('tab-single');
+        const tabBatch = document.getElementById('tab-batch');
+
+        if (tab === 'batch') {
+            singleForm.classList.add('hidden');
+            batchForm.classList.remove('hidden');
+            tabBatch.classList.add('bg-purple-500', 'text-white', 'shadow-sm');
+            tabBatch.classList.remove('text-gray-600', 'hover:text-gray-800');
+            tabSingle.classList.remove('bg-blue-500', 'text-white', 'shadow-sm');
+            tabSingle.classList.add('text-gray-600', 'hover:text-gray-800');
+        } else {
+            batchForm.classList.add('hidden');
+            singleForm.classList.remove('hidden');
+            tabSingle.classList.add('bg-blue-500', 'text-white', 'shadow-sm');
+            tabSingle.classList.remove('text-gray-600', 'hover:text-gray-800');
+            tabBatch.classList.remove('bg-purple-500', 'text-white', 'shadow-sm');
+            tabBatch.classList.add('text-gray-600', 'hover:text-gray-800');
+        }
+    };
+
+    switchTab(ACTIVE_TAB);
 });
 </script>
 {% endblock %}
