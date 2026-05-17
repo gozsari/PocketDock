@@ -3,11 +3,7 @@ djangorestframework>=3.15,<4.0
 celery>=5.4,<6.0
 redis>=5.0,<6.0
 meeko>=0.5,<0.7
-rdkit-pypi>=2022.9
-numpy>=1.26,<2.0
-scipy>=1.12
+gemmi
 gunicorn>=22.0
-openmm>=8.1
-pdbfixer>=1.9
 pytest>=8.0
 pytest-django>=4.8

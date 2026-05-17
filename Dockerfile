@@ -1,4 +1,4 @@
-FROM python:3.11-slim
+FROM condaforge/miniforge3:latest
 
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
@@ -31,8 +31,15 @@ RUN ARCH=$(dpkg --print-architecture) && \
     wget -q "$VINA_URL" -O /usr/local/bin/vina && \
     chmod +x /usr/local/bin/vina
 
+# Install scientific packages via conda (official distribution channel)
+RUN mamba install -y -c conda-forge \
+    python=3.11 rdkit openmm pdbfixer \
+    numpy scipy \
+    && mamba clean -afy
+
 WORKDIR /app
 
+# Install web framework and remaining packages via pip
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 

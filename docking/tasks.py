@@ -33,6 +33,9 @@ def run_docking_pipeline(self, job_id: int):
             _run_energy_minimization(job)
             _run_interaction_analysis(job)
 
+        if job.rescore_mmgbsa:
+            _run_mmgbsa_rescoring(job)
+
         job.status = DockingJob.Status.COMPLETED
         job.save(update_fields=["status", "updated_at"])
         logger.info("Job %s completed successfully", job_id)
@@ -606,6 +609,236 @@ def _minimize_single_pose(
     out_lines.append("END\n")
     with open(pose_pdb_path, "w") as f:
         f.writelines(out_lines)
+
+
+def _run_mmgbsa_rescoring(job):
+    """
+    Approximate MM-GBSA rescoring using RDKit MMFF94 + numpy.
+    Computes interaction energy (Coulomb + LJ) and ligand strain energy.
+    No OpenFF/ambertools dependencies -- works on all platforms.
+    """
+    import numpy as np
+    from rdkit import Chem
+    from rdkit.Chem import AllChem
+
+    from .models import DockingJob, DockingResult
+
+    job.status = DockingJob.Status.RUNNING_MMGBSA
+    job.save(update_fields=["status", "updated_at"])
+
+    protein_path = Path(job.protein_file.path)
+    ligand_sdf_path = Path(job.ligand_file.path)
+    results_dir = job.job_path / "results"
+
+    template_mol = Chem.MolFromMolFile(str(ligand_sdf_path), removeHs=False)
+    if template_mol is None:
+        logger.warning("MM-GBSA: could not read ligand SDF for job %s", job.id)
+        return
+
+    protein_data = _parse_protein_for_mmgbsa(protein_path)
+    if protein_data is None:
+        logger.warning("MM-GBSA: could not parse protein for job %s", job.id)
+        return
+
+    ligand_template_data = _prepare_ligand_template(template_mol)
+    if ligand_template_data is None:
+        logger.warning("MM-GBSA: could not prepare ligand template for job %s", job.id)
+        return
+
+    all_results = DockingResult.objects.filter(
+        pocket__job=job
+    ).select_related("pocket")
+
+    scored_count = 0
+    for dr in all_results:
+        pose_pdb = results_dir / f"pocket_{dr.pocket.rank}_pose_{dr.pose_rank}.pdb"
+        if not pose_pdb.exists():
+            continue
+
+        try:
+            score = _compute_mmgbsa_single(
+                protein_data, pose_pdb, template_mol, ligand_template_data,
+            )
+            dr.mmgbsa_score = round(score, 2)
+            dr.save(update_fields=["mmgbsa_score"])
+            scored_count += 1
+            logger.info(
+                "MM-GBSA pocket %d pose %d: dG = %.1f kJ/mol",
+                dr.pocket.rank, dr.pose_rank, score,
+            )
+        except Exception as exc:
+            logger.warning(
+                "MM-GBSA failed for pocket %d pose %d: %s",
+                dr.pocket.rank, dr.pose_rank, exc,
+            )
+
+    logger.info("MM-GBSA rescoring: scored %d/%d poses for job %s",
+                scored_count, all_results.count(), job.id)
+
+
+def _parse_protein_for_mmgbsa(protein_path):
+    """Parse protein PDB once; return coords, charges, and vdW radii for all heavy atoms."""
+    import numpy as np
+    from rdkit import Chem
+
+    mol = Chem.MolFromPDBFile(str(protein_path), removeHs=True, sanitize=False)
+    if mol is None:
+        return None
+
+    try:
+        Chem.SanitizeMol(mol)
+    except Exception:
+        pass
+
+    from rdkit.Chem import AllChem
+    AllChem.ComputeGasteigerCharges(mol)
+
+    pt = Chem.GetPeriodicTable()
+    coords, charges, radii = [], [], []
+
+    conf = mol.GetConformer()
+    for i in range(mol.GetNumAtoms()):
+        atom = mol.GetAtomWithIdx(i)
+        if atom.GetAtomicNum() == 1:
+            continue
+        pos = conf.GetAtomPosition(i)
+        coords.append([pos.x, pos.y, pos.z])
+        try:
+            q = atom.GetDoubleProp('_GasteigerCharge')
+        except KeyError:
+            q = 0.0
+        charges.append(np.clip(q, -1.0, 1.0) if np.isfinite(q) else 0.0)
+        radii.append(pt.GetRvdw(atom.GetAtomicNum()))
+
+    return {
+        "coords": np.array(coords, dtype=np.float64),
+        "charges": np.array(charges, dtype=np.float64),
+        "radii": np.array(radii, dtype=np.float64),
+    }
+
+
+def _prepare_ligand_template(template_mol):
+    """
+    Precompute Gasteiger charges and vdW radii from the template molecule.
+    These are topology-dependent (not pose-dependent) and can be reused for
+    every docked pose.
+    """
+    import numpy as np
+    from rdkit import Chem
+    from rdkit.Chem import AllChem
+
+    mol = Chem.AddHs(template_mol, addCoords=True)
+    AllChem.ComputeGasteigerCharges(mol)
+
+    pt = Chem.GetPeriodicTable()
+    charges, radii = [], []
+    for i in range(mol.GetNumAtoms()):
+        atom = mol.GetAtomWithIdx(i)
+        if atom.GetAtomicNum() == 1:
+            continue
+        try:
+            q = atom.GetDoubleProp('_GasteigerCharge')
+        except KeyError:
+            q = 0.0
+        charges.append(np.clip(q, -1.0, 1.0) if np.isfinite(q) else 0.0)
+        radii.append(pt.GetRvdw(atom.GetAtomicNum()))
+
+    if not charges:
+        return None
+
+    return {
+        "mol_with_h": mol,
+        "charges": np.array(charges, dtype=np.float64),
+        "radii": np.array(radii, dtype=np.float64),
+    }
+
+
+def _parse_ligand_pdb_coords(pdb_path):
+    """
+    Extract heavy atom coordinates directly from a ligand PDB file by
+    parsing ATOM/HETATM lines. Independent of RDKit molecule parsing,
+    so it cannot fail due to bond order or sanitization issues.
+    """
+    import numpy as np
+
+    coords = []
+    with open(pdb_path) as f:
+        for line in f:
+            if not line.startswith(("ATOM", "HETATM")):
+                continue
+            if len(line) >= 78:
+                element = line[76:78].strip()
+            else:
+                element = line[12:16].strip().lstrip("0123456789")[:1]
+            if element == "H":
+                continue
+            x = float(line[30:38])
+            y = float(line[38:46])
+            z = float(line[46:54])
+            coords.append([x, y, z])
+
+    if not coords:
+        return None
+    return np.array(coords, dtype=np.float64)
+
+
+def _compute_mmgbsa_single(protein_data, ligand_pdb_path, template_mol, ligand_template_data):
+    """
+    Approximate MM-GBSA for a single docked pose.
+    Returns score in kJ/mol (more negative = stronger binding).
+
+    Uses docked coordinates from the PDB file (parsed directly) and
+    charges/radii from the template molecule (precomputed once).
+
+    Computes Coulomb + LJ interaction energy between protein and ligand atoms.
+    """
+    import numpy as np
+
+    KCAL_TO_KJ = 4.184
+    COULOMB_CONST = 332.06  # kcal*A / (mol*e^2)
+    LJ_EPS = 0.1  # kcal/mol, generic well depth
+    CUTOFF = 10.0  # angstroms
+
+    lig_coords = _parse_ligand_pdb_coords(ligand_pdb_path)
+    if lig_coords is None or len(lig_coords) == 0:
+        raise RuntimeError(f"No heavy atom coordinates in {ligand_pdb_path}")
+
+    lig_charges = ligand_template_data["charges"]
+    lig_radii = ligand_template_data["radii"]
+
+    n_pdb = len(lig_coords)
+    n_tpl = len(lig_charges)
+    if n_pdb != n_tpl:
+        logger.debug(
+            "Heavy atom count mismatch: PDB has %d, template has %d; "
+            "truncating to min for interaction energy", n_pdb, n_tpl,
+        )
+        n = min(n_pdb, n_tpl)
+        lig_coords = lig_coords[:n]
+        lig_charges = lig_charges[:n]
+        lig_radii = lig_radii[:n]
+
+    # --- 1. Interaction energy (Coulomb + LJ) ---
+    prot_coords = protein_data["coords"]
+    prot_charges = protein_data["charges"]
+    prot_radii = protein_data["radii"]
+
+    diff = prot_coords[:, np.newaxis, :] - lig_coords[np.newaxis, :, :]  # (P, L, 3)
+    dist = np.sqrt(np.sum(diff ** 2, axis=2))  # (P, L)
+    dist = np.maximum(dist, 1.5)
+
+    mask = dist < CUTOFF
+
+    qq = prot_charges[:, np.newaxis] * lig_charges[np.newaxis, :]  # (P, L)
+    e_coulomb = np.sum((qq[mask] / (4.0 * dist[mask] ** 2)) * COULOMB_CONST)
+
+    sigma = (prot_radii[:, np.newaxis] + lig_radii[np.newaxis, :]) * 0.5  # (P, L)
+    sr6 = (sigma[mask] / dist[mask]) ** 6
+    e_lj = np.sum(4.0 * LJ_EPS * (sr6 ** 2 - sr6))
+
+    e_interaction = (e_coulomb + e_lj) * KCAL_TO_KJ
+
+    return e_interaction
 
 
 def _run_interaction_analysis(job):

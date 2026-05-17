@@ -22,7 +22,7 @@ from .serializers import (
 # ---------------------------------------------------------------------------
 # Queue helpers
 # ---------------------------------------------------------------------------
-RUNNING_STATUSES = ["running_p2rank", "running_prep", "running_vina", "running_refinement"]
+RUNNING_STATUSES = ["running_p2rank", "running_prep", "running_vina", "running_refinement", "running_mmgbsa"]
 DEFAULT_AVG_DURATION_S = 240  # 4 min — used until we have completed-job history
 
 

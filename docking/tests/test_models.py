@@ -32,6 +32,15 @@ class TestDockingJob:
         assert sample_job.admet_properties["molecular_weight"] == 180.16
         assert sample_job.admet_properties["lipinski_pass"] is True
 
+    def test_rescore_mmgbsa_default(self, sample_job):
+        assert sample_job.rescore_mmgbsa is False
+
+    def test_rescore_mmgbsa_roundtrip(self, sample_job):
+        sample_job.rescore_mmgbsa = True
+        sample_job.save()
+        sample_job.refresh_from_db()
+        assert sample_job.rescore_mmgbsa is True
+
     def test_str(self, sample_job):
         s = str(sample_job)
         assert "Test Job" in s
@@ -72,3 +81,12 @@ class TestDockingResult:
         score = dr.compute_combined_score()
         expected = 0.4 * sample_pocket.probability + 0.6 * 1.0
         assert score == pytest.approx(expected)
+
+    def test_mmgbsa_score_default_null(self, sample_result):
+        assert sample_result.mmgbsa_score is None
+
+    def test_mmgbsa_score_roundtrip(self, sample_result):
+        sample_result.mmgbsa_score = -85.3
+        sample_result.save()
+        sample_result.refresh_from_db()
+        assert sample_result.mmgbsa_score == pytest.approx(-85.3)

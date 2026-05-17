@@ -26,6 +26,7 @@ class DockingResultSerializer(serializers.ModelSerializer):
             "id", "pocket_rank", "pocket_probability",
             "pose_rank", "affinity", "rmsd_lb", "rmsd_ub",
             "pose_file", "combined_score", "ligand_efficiency",
+            "mmgbsa_score",
             "center_x", "center_y", "center_z",
         ]
 

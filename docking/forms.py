@@ -6,7 +6,7 @@ from .models import DockingJob
 class DockingJobForm(forms.ModelForm):
     class Meta:
         model = DockingJob
-        fields = ["name", "protein_file", "ligand_file", "num_pockets", "exhaustiveness", "scoring_function", "refine_poses"]
+        fields = ["name", "protein_file", "ligand_file", "num_pockets", "exhaustiveness", "scoring_function", "refine_poses", "rescore_mmgbsa"]
         widgets = {
             "name": forms.TextInput(
                 attrs={
@@ -51,6 +51,12 @@ class DockingJobForm(forms.ModelForm):
                 attrs={
                     "class": "h-5 w-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500",
                     "id": "id_refine_poses",
+                }
+            ),
+            "rescore_mmgbsa": forms.CheckboxInput(
+                attrs={
+                    "class": "h-5 w-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500",
+                    "id": "id_rescore_mmgbsa",
                 }
             ),
         }

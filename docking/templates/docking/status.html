@@ -14,89 +14,101 @@
     <div class="bg-white rounded-xl border border-gray-200 p-8 mb-8">
         <div class="flex items-center justify-between mb-8">
             <div class="flex items-center w-full">
+
+                {% with past_p2rank="running_prep running_vina running_refinement running_mmgbsa completed" past_prep="running_vina running_refinement running_mmgbsa completed" past_vina="running_refinement running_mmgbsa completed" past_refine="running_mmgbsa completed" %}
+
                 <!-- Step 1: P2Rank -->
                 <div class="flex flex-col items-center flex-1">
                     <div class="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold
                         {% if job.status == 'running_p2rank' %}step-active animate-pulse-slow
-                        {% elif job.status == 'running_prep' or job.status == 'running_vina' or job.status == 'completed' %}step-done
+                        {% elif job.status in past_p2rank %}step-done
                         {% else %}step-pending{% endif %}">
-                        {% if job.status == 'running_prep' or job.status == 'running_vina' or job.status == 'completed' %}
+                        {% if job.status in past_p2rank %}
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
                         {% else %}1{% endif %}
                     </div>
                     <span class="text-xs mt-2 text-gray-600 text-center">Pocket<br>Detection</span>
                 </div>
 
-                <div class="flex-1 h-1 {% if job.status == 'running_prep' or job.status == 'running_vina' or job.status == 'completed' %}bg-green-500{% elif job.status == 'running_p2rank' %}bg-gradient-to-r from-blue-500 to-gray-200{% else %}bg-gray-200{% endif %} rounded"></div>
+                <div class="flex-1 h-1 {% if job.status in past_p2rank %}bg-green-500{% elif job.status == 'running_p2rank' %}bg-gradient-to-r from-blue-500 to-gray-200{% else %}bg-gray-200{% endif %} rounded"></div>
 
                 <!-- Step 2: Prep -->
                 <div class="flex flex-col items-center flex-1">
                     <div class="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold
                         {% if job.status == 'running_prep' %}step-active animate-pulse-slow
-                        {% elif job.status == 'running_vina' or job.status == 'completed' %}step-done
+                        {% elif job.status in past_prep %}step-done
                         {% else %}step-pending{% endif %}">
-                        {% if job.status == 'running_vina' or job.status == 'completed' %}
+                        {% if job.status in past_prep %}
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
                         {% else %}2{% endif %}
                     </div>
                     <span class="text-xs mt-2 text-gray-600 text-center">Structure<br>Preparation</span>
                 </div>
 
-                <div class="flex-1 h-1 {% if job.status == 'running_vina' or job.status == 'completed' %}bg-green-500{% elif job.status == 'running_prep' %}bg-gradient-to-r from-blue-500 to-gray-200{% else %}bg-gray-200{% endif %} rounded"></div>
+                <div class="flex-1 h-1 {% if job.status in past_prep %}bg-green-500{% elif job.status == 'running_prep' %}bg-gradient-to-r from-blue-500 to-gray-200{% else %}bg-gray-200{% endif %} rounded"></div>
 
                 <!-- Step 3: Vina -->
                 <div class="flex flex-col items-center flex-1">
                     <div class="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold
                         {% if job.status == 'running_vina' %}step-active animate-pulse-slow
-                        {% elif job.status == 'completed' %}step-done
+                        {% elif job.status in past_vina %}step-done
                         {% else %}step-pending{% endif %}">
-                        {% if job.status == 'completed' %}
+                        {% if job.status in past_vina %}
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
                         {% else %}3{% endif %}
                     </div>
                     <span class="text-xs mt-2 text-gray-600 text-center">Vina<br>Docking</span>
                 </div>
 
-                <div class="flex-1 h-1 {% if job.status == 'running_refinement' or job.status == 'completed' %}bg-green-500{% elif job.status == 'running_vina' %}bg-gradient-to-r from-blue-500 to-gray-200{% else %}bg-gray-200{% endif %} rounded"></div>
-
+                {% with next_step_num=4 %}
                 {% if job.refine_poses %}
-                <!-- Step 4: Refinement -->
+                <div class="flex-1 h-1 {% if job.status in past_vina %}bg-green-500{% elif job.status == 'running_vina' %}bg-gradient-to-r from-blue-500 to-gray-200{% else %}bg-gray-200{% endif %} rounded"></div>
+
+                <!-- Step: Refinement -->
                 <div class="flex flex-col items-center flex-1">
                     <div class="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold
                         {% if job.status == 'running_refinement' %}step-active animate-pulse-slow
-                        {% elif job.status == 'completed' %}step-done
+                        {% elif job.status in past_refine %}step-done
                         {% else %}step-pending{% endif %}">
-                        {% if job.status == 'completed' %}
+                        {% if job.status in past_refine %}
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
                         {% else %}4{% endif %}
                     </div>
                     <span class="text-xs mt-2 text-gray-600 text-center">Pose<br>Refinement</span>
                 </div>
+                {% endif %}
 
-                <div class="flex-1 h-1 {% if job.status == 'completed' %}bg-green-500{% elif job.status == 'running_refinement' %}bg-gradient-to-r from-blue-500 to-gray-200{% else %}bg-gray-200{% endif %} rounded"></div>
+                {% if job.rescore_mmgbsa %}
+                <div class="flex-1 h-1 {% if job.status == 'running_mmgbsa' %}bg-gradient-to-r from-blue-500 to-gray-200{% elif job.status == 'completed' %}bg-green-500{% elif job.refine_poses and job.status == 'running_refinement' %}bg-gradient-to-r from-blue-500 to-gray-200{% elif job.refine_poses and job.status in past_refine %}bg-green-500{% elif not job.refine_poses and job.status == 'running_vina' %}bg-gradient-to-r from-blue-500 to-gray-200{% elif not job.refine_poses and job.status in past_vina %}bg-green-500{% else %}bg-gray-200{% endif %} rounded"></div>
 
-                <!-- Step 5: Done -->
+                <!-- Step: MM-GBSA -->
                 <div class="flex flex-col items-center flex-1">
                     <div class="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold
-                        {% if job.status == 'completed' %}step-done{% else %}step-pending{% endif %}">
+                        {% if job.status == 'running_mmgbsa' %}step-active animate-pulse-slow
+                        {% elif job.status == 'completed' %}step-done
+                        {% else %}step-pending{% endif %}">
                         {% if job.status == 'completed' %}
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
-                        {% else %}5{% endif %}
+                        {% else %}{% if job.refine_poses %}5{% else %}4{% endif %}{% endif %}
                     </div>
-                    <span class="text-xs mt-2 text-gray-600 text-center">Results<br>Ready</span>
-                </div>
-                {% else %}
-                <!-- Step 4: Done (no refinement) -->
-                <div class="flex flex-col items-center flex-1">
-                    <div class="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold
-                        {% if job.status == 'completed' %}step-done{% else %}step-pending{% endif %}">
-                        {% if job.status == 'completed' %}
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
-                        {% else %}4{% endif %}
-                    </div>
-                    <span class="text-xs mt-2 text-gray-600 text-center">Results<br>Ready</span>
+                    <span class="text-xs mt-2 text-gray-600 text-center">MM-GBSA<br>Rescoring</span>
                 </div>
                 {% endif %}
+
+                <div class="flex-1 h-1 {% if job.status == 'completed' %}bg-green-500{% elif job.status == 'running_mmgbsa' %}bg-gradient-to-r from-blue-500 to-gray-200{% elif not job.rescore_mmgbsa and job.status == 'running_refinement' %}bg-gradient-to-r from-blue-500 to-gray-200{% elif not job.rescore_mmgbsa and not job.refine_poses and job.status == 'running_vina' %}bg-gradient-to-r from-blue-500 to-gray-200{% elif not job.rescore_mmgbsa and not job.refine_poses and job.status in past_vina %}bg-green-500{% elif not job.rescore_mmgbsa and job.refine_poses and job.status in past_refine %}bg-green-500{% else %}bg-gray-200{% endif %} rounded"></div>
+
+                <!-- Final Step: Done -->
+                <div class="flex flex-col items-center flex-1">
+                    <div class="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold
+                        {% if job.status == 'completed' %}step-done{% else %}step-pending{% endif %}">
+                        {% if job.status == 'completed' %}
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                        {% else %}{% if job.refine_poses and job.rescore_mmgbsa %}6{% elif job.refine_poses or job.rescore_mmgbsa %}5{% else %}4{% endif %}{% endif %}
+                    </div>
+                    <span class="text-xs mt-2 text-gray-600 text-center">Results<br>Ready</span>
+                </div>
+                {% endwith %}
+                {% endwith %}
             </div>
         </div>
 
@@ -170,6 +182,10 @@
             <div>
                 <dt class="text-gray-500">Pose Refinement</dt>
                 <dd class="text-gray-900 font-medium">{% if job.refine_poses %}Enabled{% else %}Off{% endif %}</dd>
+            </div>
+            <div>
+                <dt class="text-gray-500">MM-GBSA Rescoring</dt>
+                <dd class="text-gray-900 font-medium">{% if job.rescore_mmgbsa %}Enabled{% else %}Off{% endif %}</dd>
             </div>
         </dl>
     </div>

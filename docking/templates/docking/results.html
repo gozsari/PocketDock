@@ -202,6 +202,7 @@
                 Job #{{ job.id }} &middot; {{ job.protein_filename }} + {{ job.ligand_filename }}
                 <span class="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-blue-100 text-blue-800">{{ job.get_scoring_function_display }}</span>
                 {% if job.refine_poses %}<span class="ml-1 inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-emerald-100 text-emerald-800">Refined</span>{% endif %}
+                {% if job.rescore_mmgbsa %}<span class="ml-1 inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-purple-100 text-purple-800">MM-GBSA</span>{% endif %}
             </p>
         </div>
         <div class="flex space-x-3">
@@ -376,6 +377,7 @@
                                 <th class="px-3 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase sort-btn" data-sort="probability">Prob.</th>
                                 <th class="px-3 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase sort-btn" data-sort="affinity">Affinity</th>
                                 <th class="px-3 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase sort-btn" data-sort="combined">Score</th>
+                                <th class="px-3 py-2.5 text-left text-xs font-semibold text-gray-500 uppercase sort-btn" data-sort="mmgbsa" id="th-mmgbsa" style="display:none">GBSA</th>
                             </tr>
                         </thead>
                         <tbody id="results-body"></tbody>
@@ -405,6 +407,7 @@
 const JOB_ID = {{ job.id }};
 const JOB_REFINED = {{ job.refine_poses|yesno:"true,false" }};
 const JOB_SCORING = "{{ job.get_scoring_function_display }}";
+const JOB_MMGBSA = {{ job.rescore_mmgbsa|yesno:"true,false" }};
 const API_BASE = "/api/jobs/" + JOB_ID;
 let viewer = null;
 let proteinModel = null;
@@ -1294,12 +1297,18 @@ function export2DMapPNG() {
 // ── Results Table ──
 
 function renderResults() {
+    const hasMMGBSA = JOB_MMGBSA && allResults.some(r => r.mmgbsa_score != null);
+    const thMmgbsa = document.getElementById('th-mmgbsa');
+    if (thMmgbsa) thMmgbsa.style.display = hasMMGBSA ? '' : 'none';
+    const colSpan = hasMMGBSA ? 5 : 4;
+
     const sorted = [...allResults].sort((a, b) => {
         let va, vb;
         switch(currentSort.field) {
             case 'pocket': va = a.pocket_rank; vb = b.pocket_rank; break;
             case 'probability': va = a.pocket_probability; vb = b.pocket_probability; break;
             case 'affinity': va = a.affinity; vb = b.affinity; break;
+            case 'mmgbsa': va = a.mmgbsa_score ?? 0; vb = b.mmgbsa_score ?? 0; break;
             case 'combined': va = a.combined_score; vb = b.combined_score; break;
             default: va = a.combined_score; vb = b.combined_score;
         }
@@ -1311,7 +1320,7 @@ function renderResults() {
     document.getElementById('result-count').textContent = `${sorted.length} poses across ${new Set(sorted.map(r => r.pocket_rank)).size} pockets`;
 
     if (sorted.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="4" class="px-3 py-8 text-center text-gray-400 text-sm">No docking poses were generated for this job.</td></tr>';
+        tbody.innerHTML = `<tr><td colspan="${colSpan}" class="px-3 py-8 text-center text-gray-400 text-sm">No docking poses were generated for this job.</td></tr>`;
         return;
     }
 
@@ -1319,14 +1328,13 @@ function renderResults() {
         const key = `p${result.pocket_rank}_pose${result.pose_rank}`;
         const color = POCKET_COLORS[(result.pocket_rank - 1) % POCKET_COLORS.length];
 
-        // Affinity gradient: more negative = greener
         const affinityNorm = Math.min(1, Math.max(0, (-result.affinity - 3) / 7));
         const affinityBg = `rgba(${Math.round(34 + (1-affinityNorm)*200)}, ${Math.round(197*affinityNorm + 80*(1-affinityNorm))}, ${Math.round(94*affinityNorm + 80*(1-affinityNorm))}, 0.15)`;
 
         const tr = document.createElement('tr');
         tr.className = 'result-row' + (key === activePoseKey ? ' active' : '');
         tr.dataset.key = key;
-        tr.innerHTML = `
+        let rowHtml = `
             <td class="px-3 py-2.5">
                 <span class="pocket-badge" style="background:${color}22;color:${color}">P${result.pocket_rank}</span>
                 <span class="text-gray-400 text-xs ml-1">#${result.pose_rank}</span>
@@ -1337,8 +1345,14 @@ function renderResults() {
                 <span class="font-semibold text-sm ${result.combined_score > 0.6 ? 'text-green-600' : result.combined_score > 0.3 ? 'text-yellow-600' : 'text-gray-500'}">
                     ${result.combined_score.toFixed(3)}
                 </span>
-            </td>
-        `;
+            </td>`;
+        if (hasMMGBSA) {
+            const gbsa = result.mmgbsa_score;
+            const gbsaStr = gbsa != null ? gbsa.toFixed(1) : '-';
+            const gbsaClass = gbsa != null && gbsa < -50 ? 'text-green-600 font-semibold' : gbsa != null && gbsa < 0 ? 'text-yellow-600' : 'text-gray-400';
+            rowHtml += `<td class="px-3 py-2.5 font-mono text-xs ${gbsaClass}">${gbsaStr}</td>`;
+        }
+        tr.innerHTML = rowHtml;
         tr.addEventListener('click', () => selectPose(result, key));
         tbody.appendChild(tr);
     });
@@ -1420,6 +1434,12 @@ async function selectPose(result, key) {
     `;
     if (JOB_REFINED) {
         details.innerHTML += `<div class="col-span-2"><dt class="text-gray-500 text-xs">Refinement</dt><dd><span class="inline-block px-2 py-0.5 rounded text-xs font-semibold bg-emerald-100 text-emerald-800">Energy-minimized</span></dd></div>`;
+    }
+    if (result.mmgbsa_score != null) {
+        const gbsa = result.mmgbsa_score;
+        const gbsaClass = gbsa < -50 ? 'text-green-600' : gbsa < 0 ? 'text-yellow-600' : 'text-red-600';
+        const gbsaLabel = gbsa < -100 ? 'Very Strong' : gbsa < -50 ? 'Strong' : gbsa < 0 ? 'Moderate' : 'Unfavorable';
+        details.innerHTML += `<div class="col-span-2"><dt class="text-gray-500 text-xs">MM-GBSA</dt><dd class="font-semibold ${gbsaClass}">${gbsa.toFixed(1)} kJ/mol <span class="text-xs font-normal">(${gbsaLabel})</span></dd></div>`;
     }
 
     if (result.ligand_efficiency) {
@@ -2084,9 +2104,10 @@ function toggleSidebar() {
 // ── CSV Download ──
 
 function downloadCSV() {
-    let csv = "pocket_rank,pocket_probability,pose_rank,affinity_kcal_mol,rmsd_lb,rmsd_ub,combined_score\n";
+    const hasGBSA = JOB_MMGBSA && allResults.some(r => r.mmgbsa_score != null);
+    let csv = "pocket_rank,pocket_probability,pose_rank,affinity_kcal_mol,rmsd_lb,rmsd_ub,combined_score" + (hasGBSA ? ",mmgbsa_kj_mol" : "") + "\n";
     allResults.forEach(r => {
-        csv += `${r.pocket_rank},${r.pocket_probability.toFixed(4)},${r.pose_rank},${r.affinity.toFixed(2)},${r.rmsd_lb.toFixed(2)},${r.rmsd_ub.toFixed(2)},${r.combined_score.toFixed(4)}\n`;
+        csv += `${r.pocket_rank},${r.pocket_probability.toFixed(4)},${r.pose_rank},${r.affinity.toFixed(2)},${r.rmsd_lb.toFixed(2)},${r.rmsd_ub.toFixed(2)},${r.combined_score.toFixed(4)}` + (hasGBSA ? `,${r.mmgbsa_score != null ? r.mmgbsa_score.toFixed(2) : ''}` : '') + `\n`;
     });
     const blob = new Blob([csv], {type: 'text/csv'});
     const url = URL.createObjectURL(blob);

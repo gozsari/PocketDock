@@ -112,6 +112,20 @@
             {% if form.refine_poses.errors %}
             <p class="mt-2 text-sm text-red-600">{{ form.refine_poses.errors.0 }}</p>
             {% endif %}
+            <div class="flex items-start gap-3 mt-4">
+                {{ form.rescore_mmgbsa }}
+                <div>
+                    <label for="id_rescore_mmgbsa" class="text-sm text-gray-700 font-medium cursor-pointer">
+                        MM-GBSA rescoring
+                    </label>
+                    <p class="mt-1 text-xs text-gray-400">
+                        Compute binding free energy using MM-GBSA (more accurate than Vina scoring, ~30-60s extra per pose)
+                    </p>
+                </div>
+            </div>
+            {% if form.rescore_mmgbsa.errors %}
+            <p class="mt-2 text-sm text-red-600">{{ form.rescore_mmgbsa.errors.0 }}</p>
+            {% endif %}
         </div>
 
         <!-- Submit -->

@@ -16,6 +16,7 @@ class DockingJob(models.Model):
         RUNNING_PREP = "running_prep", "Preparing Structures"
         RUNNING_VINA = "running_vina", "Running AutoDock Vina"
         RUNNING_REFINEMENT = "running_refinement", "Refining Poses"
+        RUNNING_MMGBSA = "running_mmgbsa", "Computing MM-GBSA"
         COMPLETED = "completed", "Completed"
         FAILED = "failed", "Failed"
 
@@ -49,6 +50,10 @@ class DockingJob(models.Model):
     refine_poses = models.BooleanField(
         default=False,
         help_text="Run OpenMM energy minimization on docked poses",
+    )
+    rescore_mmgbsa = models.BooleanField(
+        default=False,
+        help_text="Compute MM-GBSA binding free energy for each pose",
     )
     admet_properties = models.JSONField(
         default=dict,
@@ -124,6 +129,11 @@ class DockingResult(models.Model):
     ligand_efficiency = models.FloatField(
         default=0.0,
         help_text="LE = -affinity / heavy_atom_count",
+    )
+    mmgbsa_score = models.FloatField(
+        null=True,
+        blank=True,
+        help_text="MM-GBSA binding free energy in kJ/mol (more negative = stronger)",
     )
 
     class Meta:
