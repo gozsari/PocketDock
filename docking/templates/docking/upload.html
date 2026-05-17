@@ -119,6 +119,32 @@
             </div>
         </div>
 
+        <div class="bg-white rounded-xl border border-gray-200 p-6">
+            <h3 class="text-sm font-semibold text-gray-700 mb-4">Ensemble Docking</h3>
+            <div class="flex items-start gap-3">
+                {{ form.ensemble_enabled }}
+                <div>
+                    <label for="id_ensemble_enabled" class="text-sm text-gray-700 font-medium cursor-pointer">Enable ensemble docking</label>
+                    <p class="mt-1 text-xs text-gray-400">Dock against multiple receptor conformations to account for flexibility</p>
+                </div>
+            </div>
+            <div id="ensemble-options-single" class="hidden mt-4 ml-8 space-y-4">
+                <div>
+                    <label for="id_ensemble_method" class="block text-sm text-gray-600 mb-1">Conformation Method</label>
+                    {{ form.ensemble_method }}
+                    <p class="mt-1 text-xs text-gray-400">NMA is fast (~30s); Brief MD is more accurate but slower (~5-15 min)</p>
+                    <div id="md-warning-single" class="hidden mt-2 bg-amber-50 border border-amber-200 rounded-lg p-3">
+                        <p class="text-xs text-amber-700 font-medium">Brief MD may take 5-15 extra minutes to generate conformations.</p>
+                    </div>
+                </div>
+                <div>
+                    <label for="id_num_conformations" class="block text-sm text-gray-600 mb-1">Number of Conformations</label>
+                    {{ form.num_conformations }}
+                    <p class="mt-1 text-xs text-gray-400">2-10 receptor conformations (default: 5)</p>
+                </div>
+            </div>
+        </div>
+
         <div class="flex justify-center">
             <button type="submit" id="submit-btn-single"
                     class="px-8 py-3 bg-gradient-to-r from-blue-500 to-purple-600 text-white font-semibold
@@ -227,6 +253,32 @@
             </div>
         </div>
 
+        <div class="bg-white rounded-xl border border-gray-200 p-6">
+            <h3 class="text-sm font-semibold text-gray-700 mb-4">Ensemble Docking</h3>
+            <div class="flex items-start gap-3">
+                {{ batch_form.ensemble_enabled }}
+                <div>
+                    <label for="id_ensemble_enabled" class="text-sm text-gray-700 font-medium cursor-pointer">Enable ensemble docking</label>
+                    <p class="mt-1 text-xs text-gray-400">Dock against multiple receptor conformations to account for flexibility</p>
+                </div>
+            </div>
+            <div id="ensemble-options-batch" class="hidden mt-4 ml-8 space-y-4">
+                <div>
+                    <label class="block text-sm text-gray-600 mb-1">Conformation Method</label>
+                    {{ batch_form.ensemble_method }}
+                    <p class="mt-1 text-xs text-gray-400">NMA is fast (~30s); Brief MD is more accurate but slower (~5-15 min)</p>
+                    <div id="md-warning-batch" class="hidden mt-2 bg-amber-50 border border-amber-200 rounded-lg p-3">
+                        <p class="text-xs text-amber-700 font-medium">Brief MD may take 5-15 extra minutes per ligand to generate conformations.</p>
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-sm text-gray-600 mb-1">Number of Conformations</label>
+                    {{ batch_form.num_conformations }}
+                    <p class="mt-1 text-xs text-gray-400">2-10 receptor conformations (default: 5)</p>
+                </div>
+            </div>
+        </div>
+
         <div class="flex justify-center">
             <button type="submit" id="submit-btn-batch"
                     class="px-8 py-3 bg-gradient-to-r from-purple-500 to-pink-600 text-white font-semibold
@@ -328,6 +380,45 @@ document.addEventListener('DOMContentLoaded', function() {
     };
 
     switchTab(ACTIVE_TAB);
+
+    function setupEnsembleToggle(formPrefix) {
+        const checkbox = document.querySelector('#' + formPrefix + '-form [id$="ensemble_enabled"]');
+        const options = document.getElementById('ensemble-options-' + formPrefix);
+        const methodSelect = options ? options.querySelector('select') : null;
+        const mdWarning = document.getElementById('md-warning-' + formPrefix);
+
+        if (!checkbox || !options) return;
+
+        function toggleOptions() {
+            if (checkbox.checked) {
+                options.classList.remove('hidden');
+                if (methodSelect && methodSelect.value === 'none') {
+                    methodSelect.value = 'nma';
+                }
+            } else {
+                options.classList.add('hidden');
+            }
+        }
+
+        function toggleMdWarning() {
+            if (!mdWarning || !methodSelect) return;
+            if (methodSelect.value === 'md') {
+                mdWarning.classList.remove('hidden');
+            } else {
+                mdWarning.classList.add('hidden');
+            }
+        }
+
+        checkbox.addEventListener('change', toggleOptions);
+        if (methodSelect) {
+            methodSelect.addEventListener('change', toggleMdWarning);
+        }
+        toggleOptions();
+        toggleMdWarning();
+    }
+
+    setupEnsembleToggle('single');
+    setupEnsembleToggle('batch');
 });
 </script>
 {% endblock %}

@@ -1,0 +1,290 @@
+{% extends "docking/base.html" %}
+{% block title %}PocketDock - Ensemble {{ ensemble_id }}{% endblock %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto px-4 py-12">
+    <!-- Header -->
+    <div class="text-center mb-8">
+        <h1 class="text-3xl font-bold text-gray-900 mb-2">
+            {{ ensemble_name|default:"Ensemble Docking" }}
+        </h1>
+        <p class="text-gray-500">
+            Ensemble {{ ensemble_id }}
+            &middot; {{ method_display }}
+            &middot; {{ num_conformations }} conformation{{ num_conformations|pluralize }}
+        </p>
+        <p class="text-sm text-gray-400 mt-1">
+            Protein: {{ protein_filename }} &middot; Ligand: {{ ligand_filename }}
+        </p>
+    </div>
+
+    <!-- Progress Card -->
+    <div class="bg-white rounded-xl border border-gray-200 p-6 mb-8">
+        <div class="flex items-center justify-between mb-4">
+            <h3 class="text-sm font-semibold text-gray-700">Progress</h3>
+            <span class="text-sm font-medium text-gray-500" id="progress-text">
+                {{ completed }}/{{ total }} completed
+                {% if failed %} &middot; {{ failed }} failed{% endif %}
+            </span>
+        </div>
+        <div class="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
+            <div id="progress-bar"
+                 class="h-full rounded-full transition-all duration-500
+                        {% if failed and completed == 0 %}bg-red-500
+                        {% elif all_done %}bg-green-500
+                        {% else %}bg-gradient-to-r from-blue-500 to-teal-500{% endif %}"
+                 style="width: {{ progress_pct }}%"></div>
+        </div>
+        <div class="flex justify-between mt-3 text-xs text-gray-500">
+            <span>
+                <span class="inline-block w-2 h-2 rounded-full bg-green-500 mr-1"></span>
+                Completed: <strong id="count-completed">{{ completed }}</strong>
+            </span>
+            <span>
+                <span class="inline-block w-2 h-2 rounded-full bg-blue-500 animate-pulse mr-1"></span>
+                Running: <strong id="count-running">{{ running }}</strong>
+            </span>
+            <span>
+                <span class="inline-block w-2 h-2 rounded-full bg-gray-400 mr-1"></span>
+                Pending: <strong id="count-pending">{{ pending }}</strong>
+            </span>
+            {% if failed %}
+            <span>
+                <span class="inline-block w-2 h-2 rounded-full bg-red-500 mr-1"></span>
+                Failed: <strong id="count-failed">{{ failed }}</strong>
+            </span>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Actions -->
+    <div class="flex justify-end gap-3 mb-4">
+        <button onclick="downloadCSV()" class="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+            Download CSV
+        </button>
+        <a href="{% url 'docking:upload' %}" class="px-4 py-2 text-sm font-medium text-white bg-blue-500 rounded-lg hover:bg-blue-600 transition-colors">
+            New Job
+        </a>
+    </div>
+
+    <!-- Best Poses Across All Conformations -->
+    <div class="bg-white rounded-xl border border-gray-200 overflow-hidden mb-8">
+        <div class="px-6 py-4 bg-gray-50 border-b border-gray-200">
+            <h3 class="text-sm font-semibold text-gray-700">Best Poses Across All Conformations</h3>
+            <p class="text-xs text-gray-400 mt-1">Top results ranked by combined score, showing which conformation each came from</p>
+        </div>
+        <table class="w-full text-sm" id="ensemble-best-table">
+            <thead>
+                <tr class="bg-gray-50 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider border-b border-gray-200">
+                    <th class="px-4 py-3">#</th>
+                    <th class="px-4 py-3 cursor-pointer hover:text-gray-700" onclick="sortBestTable(1)">Conf.</th>
+                    <th class="px-4 py-3 cursor-pointer hover:text-gray-700" onclick="sortBestTable(2)">Pocket</th>
+                    <th class="px-4 py-3 cursor-pointer hover:text-gray-700" onclick="sortBestTable(3)">Pose</th>
+                    <th class="px-4 py-3 cursor-pointer hover:text-gray-700" onclick="sortBestTable(4)">Affinity</th>
+                    <th class="px-4 py-3 cursor-pointer hover:text-gray-700" onclick="sortBestTable(5)">Score</th>
+                    {% if best_results.0.mmgbsa_score is not None %}
+                    <th class="px-4 py-3 cursor-pointer hover:text-gray-700" onclick="sortBestTable(6)">GBSA</th>
+                    {% endif %}
+                    <th class="px-4 py-3">View</th>
+                </tr>
+            </thead>
+            <tbody id="best-tbody">
+                {% for dr in best_results %}
+                <tr class="border-t border-gray-100 hover:bg-gray-50 transition-colors">
+                    <td class="px-4 py-3 text-gray-400">{{ forloop.counter }}</td>
+                    <td class="px-4 py-3">
+                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-teal-100 text-teal-800">
+                            Conf {{ dr.pocket.job.conformation_index }}
+                        </span>
+                    </td>
+                    <td class="px-4 py-3 text-gray-700">P{{ dr.pocket.rank }}</td>
+                    <td class="px-4 py-3 text-gray-700">#{{ dr.pose_rank }}</td>
+                    <td class="px-4 py-3 text-gray-700 tabular-nums font-medium">{{ dr.affinity|floatformat:1 }}</td>
+                    <td class="px-4 py-3 text-gray-700 tabular-nums">{{ dr.combined_score|floatformat:3 }}</td>
+                    {% if best_results.0.mmgbsa_score is not None %}
+                    <td class="px-4 py-3 text-gray-700 tabular-nums">
+                        {% if dr.mmgbsa_score is not None %}{{ dr.mmgbsa_score|floatformat:1 }}{% else %}&mdash;{% endif %}
+                    </td>
+                    {% endif %}
+                    <td class="px-4 py-3">
+                        <a href="{% url 'docking:job_detail' dr.pocket.job_id %}?view=results"
+                           class="text-blue-600 hover:text-blue-800 text-xs font-medium">Details</a>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="8" class="px-4 py-8 text-center text-gray-400">
+                        {% if all_done %}No results found.{% else %}Results will appear as conformations complete...{% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Per-Conformation Details (Accordion) -->
+    <div class="space-y-3">
+        <h3 class="text-sm font-semibold text-gray-700 mb-2">Per-Conformation Details</h3>
+        {% for cs in conf_summaries %}
+        <div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
+            <button onclick="toggleConf({{ cs.job.conformation_index }})"
+                    class="w-full flex items-center justify-between px-6 py-4 text-left hover:bg-gray-50 transition-colors">
+                <div class="flex items-center gap-3">
+                    <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-teal-100 text-teal-800">
+                        Conf {{ cs.job.conformation_index }}
+                    </span>
+                    {% if cs.job.status == 'completed' %}
+                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">Completed</span>
+                    {% elif cs.job.status == 'failed' %}
+                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">Failed</span>
+                    {% elif cs.job.status == 'pending' %}
+                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">Pending</span>
+                    {% else %}
+                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                        <span class="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse mr-1"></span>
+                        {{ cs.job.get_status_display }}
+                    </span>
+                    {% endif %}
+                    {% if cs.best_affinity is not None %}
+                    <span class="text-sm text-gray-600">
+                        Best: <strong class="text-gray-800">{{ cs.best_affinity|floatformat:1 }}</strong> kcal/mol
+                    </span>
+                    {% endif %}
+                </div>
+                <svg id="chevron-{{ cs.job.conformation_index }}"
+                     class="w-5 h-5 text-gray-400 transform transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                </svg>
+            </button>
+            <div id="conf-body-{{ cs.job.conformation_index }}" class="hidden border-t border-gray-200">
+                {% if cs.results %}
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="bg-gray-50 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                            <th class="px-4 py-2">Pocket</th>
+                            <th class="px-4 py-2">Pose</th>
+                            <th class="px-4 py-2">Affinity</th>
+                            <th class="px-4 py-2">Score</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for dr in cs.results %}
+                        <tr class="border-t border-gray-100">
+                            <td class="px-4 py-2 text-gray-700">P{{ dr.pocket.rank }}</td>
+                            <td class="px-4 py-2 text-gray-700">#{{ dr.pose_rank }}</td>
+                            <td class="px-4 py-2 text-gray-700 tabular-nums">{{ dr.affinity|floatformat:1 }}</td>
+                            <td class="px-4 py-2 text-gray-700 tabular-nums">{{ dr.combined_score|floatformat:3 }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                <div class="px-6 py-3 bg-gray-50 text-right">
+                    <a href="{% url 'docking:job_detail' cs.job.id %}?view=results"
+                       class="text-blue-600 hover:text-blue-800 text-xs font-medium">
+                        View Full Results &rarr;
+                    </a>
+                </div>
+                {% else %}
+                <div class="px-6 py-6 text-center text-sm text-gray-400">
+                    {% if cs.job.status == 'failed' %}
+                    This conformation failed. <a href="{% url 'docking:job_detail' cs.job.id %}" class="text-red-500 hover:underline">View error</a>
+                    {% elif cs.job.status == 'completed' %}
+                    No results found for this conformation.
+                    {% else %}
+                    Waiting for results...
+                    {% endif %}
+                </div>
+                {% endif %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function() {
+    const ENSEMBLE_ID = '{{ ensemble_id }}';
+    const allDone = {{ all_done|yesno:"true,false" }};
+    let delay = 5000;
+
+    function poll() {
+        if (allDone) return;
+        setTimeout(function() {
+            fetch('/api/ensemble/' + ENSEMBLE_ID + '/')
+                .then(r => r.json())
+                .then(data => {
+                    if (data.all_done || data.progress_pct >= 100) {
+                        window.location.reload();
+                        return;
+                    }
+                    document.getElementById('progress-bar').style.width = data.progress_pct + '%';
+                    document.getElementById('progress-text').textContent =
+                        data.completed + '/' + data.total + ' completed' +
+                        (data.failed ? ' \u00b7 ' + data.failed + ' failed' : '');
+                    document.getElementById('count-completed').textContent = data.completed;
+                    document.getElementById('count-running').textContent = data.running;
+                    document.getElementById('count-pending').textContent = data.pending;
+                    const failedEl = document.getElementById('count-failed');
+                    if (failedEl) failedEl.textContent = data.failed;
+                    poll();
+                })
+                .catch(() => {
+                    delay = Math.min(delay * 1.5, 30000);
+                    poll();
+                });
+        }, delay);
+    }
+    poll();
+
+    window.toggleConf = function(idx) {
+        const body = document.getElementById('conf-body-' + idx);
+        const chevron = document.getElementById('chevron-' + idx);
+        if (!body) return;
+        body.classList.toggle('hidden');
+        if (chevron) chevron.classList.toggle('rotate-180');
+    };
+
+    let bestSortDir = {};
+    window.sortBestTable = function(col) {
+        const tbody = document.getElementById('best-tbody');
+        if (!tbody) return;
+        const rows = Array.from(tbody.querySelectorAll('tr'));
+        bestSortDir[col] = !(bestSortDir[col] || false);
+        const asc = bestSortDir[col] ? 1 : -1;
+
+        rows.sort((a, b) => {
+            let va = a.cells[col] ? a.cells[col].textContent.trim() : '';
+            let vb = b.cells[col] ? b.cells[col].textContent.trim() : '';
+            const na = parseFloat(va), nb = parseFloat(vb);
+            if (!isNaN(na) && !isNaN(nb)) return (na - nb) * asc;
+            if (va === '\u2014') va = '';
+            if (vb === '\u2014') vb = '';
+            return va.localeCompare(vb) * asc;
+        });
+        rows.forEach(r => tbody.appendChild(r));
+    };
+
+    window.downloadCSV = function() {
+        const rows = document.querySelectorAll('#ensemble-best-table tbody tr');
+        let csv = 'Rank,Conformation,Pocket,Pose,Affinity (kcal/mol),Combined Score\n';
+        rows.forEach(r => {
+            if (r.cells.length < 6) return;
+            const rank = r.cells[0].textContent.trim();
+            const conf = r.cells[1].textContent.trim();
+            const pocket = r.cells[2].textContent.trim();
+            const pose = r.cells[3].textContent.trim();
+            const aff = r.cells[4].textContent.trim();
+            const score = r.cells[5].textContent.trim();
+            csv += `${rank},"${conf}","${pocket}","${pose}","${aff}","${score}"\n`;
+        });
+        const blob = new Blob([csv], {type: 'text/csv'});
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'ensemble_' + ENSEMBLE_ID + '_results.csv';
+        a.click();
+    };
+})();
+</script>
+{% endblock %}

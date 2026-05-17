@@ -10,19 +10,41 @@ from django.conf import settings
 logger = logging.getLogger(__name__)
 
 
-@shared_task(bind=True, max_retries=0)
+def _get_openmm_platform():
+    """Auto-detect the fastest available OpenMM platform (CUDA > OpenCL > CPU)."""
+    from openmm import Platform
+
+    for name in ("CUDA", "OpenCL", "CPU"):
+        try:
+            p = Platform.getPlatformByName(name)
+            logger.info("OpenMM platform: %s", name)
+            return p
+        except Exception:
+            continue
+    logger.warning("No named OpenMM platform found; falling back to auto-select")
+    return None
+
+
+@shared_task(bind=True, max_retries=0, soft_time_limit=3300)
 def run_docking_pipeline(self, job_id: int):
     """
     Main pipeline task that orchestrates the full docking workflow:
-    1. P2Rank pocket detection
-    2. Structure preparation (Meeko)
-    3. AutoDock Vina docking for each pocket
+    1. (Optional) Ensemble conformation generation
+    2. P2Rank pocket detection
+    3. Structure preparation (Meeko)
+    4. AutoDock Vina docking for each pocket
     """
+    from celery.exceptions import SoftTimeLimitExceeded
+
     from .models import DockingJob
 
     job = DockingJob.objects.get(id=job_id)
 
     try:
+        if job.ensemble_method != "none" and job.conformation_index == 0:
+            _run_ensemble_docking(job)
+            return
+
         _run_p2rank(job)
         _run_structure_prep(job)
         _compute_admet_properties(job)
@@ -40,12 +62,321 @@ def run_docking_pipeline(self, job_id: int):
         job.save(update_fields=["status", "updated_at"])
         logger.info("Job %s completed successfully", job_id)
 
+    except SoftTimeLimitExceeded:
+        logger.error("Job %s exceeded soft time limit (3300s)", job_id)
+        job.status = DockingJob.Status.FAILED
+        job.error_message = (
+            "Pipeline timed out (exceeded 55-minute soft limit). "
+            "Try reducing exhaustiveness, number of conformations, "
+            "or switching from MD to NMA for ensemble generation."
+        )
+        job.save(update_fields=["status", "error_message", "updated_at"])
+
     except Exception as exc:
         logger.exception("Job %s failed: %s", job_id, exc)
         job.status = DockingJob.Status.FAILED
         job.error_message = str(exc)[:2000]
         job.save(update_fields=["status", "error_message", "updated_at"])
         raise
+
+
+def _run_ensemble_docking(job):
+    """
+    Parent ensemble job: generate N conformations, then create and enqueue
+    a child DockingJob for each conformation.
+    """
+    import shutil
+    import uuid
+
+    from django.core.files.base import ContentFile
+
+    from .models import DockingJob
+
+    job.status = DockingJob.Status.RUNNING_ENSEMBLE
+    job.save(update_fields=["status", "updated_at"])
+
+    ensemble_id = uuid.uuid4().hex[:12]
+    job.ensemble_id = ensemble_id
+    job.save(update_fields=["ensemble_id"])
+
+    protein_path = Path(job.protein_file.path)
+    ligand_path = Path(job.ligand_file.path)
+    conf_dir = job.job_path / "conformations"
+    conf_dir.mkdir(parents=True, exist_ok=True)
+
+    n_confs = job.num_conformations
+
+    if job.ensemble_method == "nma":
+        conf_paths = _generate_conformations_nma(protein_path, n_confs, conf_dir)
+    elif job.ensemble_method == "md":
+        conf_paths = _generate_conformations_md(protein_path, n_confs, conf_dir)
+    else:
+        raise RuntimeError(f"Unknown ensemble method: {job.ensemble_method}")
+
+    logger.info(
+        "Ensemble job %s: generated %d conformations via %s",
+        job.id, len(conf_paths), job.ensemble_method,
+    )
+
+    ligand_bytes = ligand_path.read_bytes()
+    ligand_filename = ligand_path.name
+
+    for idx, conf_path in enumerate(conf_paths, start=1):
+        conf_bytes = conf_path.read_bytes()
+        child = DockingJob(
+            name=f"{job.name or 'Ensemble'} - conf {idx}",
+            num_pockets=job.num_pockets,
+            exhaustiveness=job.exhaustiveness,
+            scoring_function=job.scoring_function,
+            refine_poses=job.refine_poses,
+            rescore_mmgbsa=job.rescore_mmgbsa,
+            ensemble_id=ensemble_id,
+            ensemble_method=job.ensemble_method,
+            conformation_index=idx,
+            num_conformations=n_confs,
+        )
+        child.save()
+
+        child.protein_file.save(
+            f"conf_{idx}.pdb", ContentFile(conf_bytes), save=True,
+        )
+        child.ligand_file.save(
+            ligand_filename, ContentFile(ligand_bytes), save=True,
+        )
+
+        task = run_docking_pipeline.delay(child.id)
+        child.celery_task_id = task.id
+        child.save(update_fields=["celery_task_id"])
+
+        logger.info(
+            "Ensemble job %s: spawned child job %s (conf %d)",
+            job.id, child.id, idx,
+        )
+
+    job.status = DockingJob.Status.COMPLETED
+    job.save(update_fields=["status", "updated_at"])
+    logger.info("Ensemble parent job %s completed, %d children enqueued", job.id, len(conf_paths))
+
+
+def _generate_conformations_nma(protein_path, n_confs, output_dir):
+    """
+    Generate receptor conformations via Anisotropic Network Model (ANM).
+    Pure NumPy/SciPy implementation -- no ProDy dependency.
+
+    Steps:
+      1. Parse CA atoms from PDB
+      2. Build the ANM Hessian (Tirion potential, 15 A cutoff)
+      3. Eigendecompose to get lowest-frequency normal modes
+      4. Perturb all-atom coordinates along each mode
+      5. Write perturbed PDBs
+    """
+    import numpy as np
+    from scipy.linalg import eigh
+
+    ANM_CUTOFF = 15.0
+    ANM_GAMMA = 1.0
+
+    pdb_lines = []
+    ca_coords = []
+    ca_line_indices = []
+
+    with open(protein_path) as f:
+        for i, line in enumerate(f):
+            if line.startswith(("ATOM", "HETATM")):
+                pdb_lines.append(line)
+                atom_name = line[12:16].strip()
+                if atom_name == "CA":
+                    x = float(line[30:38])
+                    y = float(line[38:46])
+                    z = float(line[46:54])
+                    ca_coords.append([x, y, z])
+                    ca_line_indices.append(len(pdb_lines) - 1)
+            else:
+                pdb_lines.append(line)
+
+    ca_coords = np.array(ca_coords, dtype=np.float64)
+    n_ca = len(ca_coords)
+
+    if n_ca < 10:
+        raise RuntimeError(f"Too few CA atoms ({n_ca}) for NMA")
+
+    all_atom_coords = []
+    all_atom_line_indices = []
+    for i, line in enumerate(pdb_lines):
+        if line.startswith(("ATOM", "HETATM")):
+            x = float(line[30:38])
+            y = float(line[38:46])
+            z = float(line[46:54])
+            all_atom_coords.append([x, y, z])
+            all_atom_line_indices.append(i)
+
+    all_atom_coords = np.array(all_atom_coords, dtype=np.float64)
+    n_atoms = len(all_atom_coords)
+
+    ca_atom_indices = []
+    for ca_line_idx in ca_line_indices:
+        ca_atom_indices.append(all_atom_line_indices.index(ca_line_idx))
+    ca_atom_indices = np.array(ca_atom_indices)
+
+    logger.info("NMA: %d CA atoms, %d total atoms", n_ca, n_atoms)
+
+    hessian = np.zeros((3 * n_ca, 3 * n_ca), dtype=np.float64)
+    for i in range(n_ca):
+        for j in range(i + 1, n_ca):
+            diff = ca_coords[i] - ca_coords[j]
+            dist2 = np.dot(diff, diff)
+            if dist2 < ANM_CUTOFF ** 2:
+                outer = np.outer(diff, diff) * (-ANM_GAMMA / dist2)
+                ii, jj = 3 * i, 3 * j
+                hessian[ii:ii+3, jj:jj+3] = outer
+                hessian[jj:jj+3, ii:ii+3] = outer
+                hessian[ii:ii+3, ii:ii+3] -= outer
+                hessian[jj:jj+3, jj:jj+3] -= outer
+
+    n_modes = min(20, n_ca * 3 - 7)
+    eigenvalues, eigenvectors = eigh(
+        hessian, subset_by_index=[6, 6 + n_modes - 1],
+    )
+
+    non_ca_mask = np.ones(n_atoms, dtype=bool)
+    non_ca_mask[ca_atom_indices] = False
+    non_ca_indices = np.where(non_ca_mask)[0]
+
+    nearest_ca_for_atom = np.zeros(n_atoms, dtype=int)
+    if len(non_ca_indices) > 0:
+        for atom_idx in non_ca_indices:
+            dists = np.linalg.norm(
+                all_atom_coords[ca_atom_indices] - all_atom_coords[atom_idx],
+                axis=1,
+            )
+            nearest_ca_for_atom[atom_idx] = np.argmin(dists)
+
+    conf_paths = []
+    for i in range(n_confs):
+        mode_idx = i % n_modes
+        eigvec = eigenvectors[:, mode_idx].reshape(n_ca, 3)
+
+        scale = 1.5 + 0.5 * i
+        sign = 1 if i % 2 == 0 else -1
+        ca_displacement = eigvec * scale * sign
+
+        perturbed = all_atom_coords.copy()
+        perturbed[ca_atom_indices] += ca_displacement
+
+        for atom_idx in non_ca_indices:
+            perturbed[atom_idx] += ca_displacement[nearest_ca_for_atom[atom_idx]]
+
+        out_path = output_dir / f"conf_{i + 1}.pdb"
+        atom_counter = 0
+        with open(out_path, "w") as f:
+            for line_idx, line in enumerate(pdb_lines):
+                if line.startswith(("ATOM", "HETATM")):
+                    x, y, z = perturbed[atom_counter]
+                    new_line = line[:30] + f"{x:8.3f}{y:8.3f}{z:8.3f}" + line[54:]
+                    f.write(new_line)
+                    atom_counter += 1
+                else:
+                    f.write(line)
+        conf_paths.append(out_path)
+
+        rmsd = np.sqrt(np.mean(np.sum(
+            (perturbed - all_atom_coords) ** 2, axis=1,
+        )))
+        logger.info(
+            "NMA conf %d: mode %d, scale %.1f, RMSD %.2f A",
+            i + 1, mode_idx, scale * sign, rmsd,
+        )
+
+    return conf_paths
+
+
+def _generate_conformations_md(protein_path, n_confs, output_dir):
+    """
+    Generate receptor conformations via brief OpenMM MD simulation.
+    Runs Langevin dynamics in implicit solvent (AMBER14/OBC2), saves
+    evenly-spaced snapshots as PDB conformations.
+    """
+    import io
+
+    import time as _time
+
+    try:
+        from pdbfixer import PDBFixer
+        from openmm import LangevinMiddleIntegrator
+        from openmm.app import ForceField, HBonds, PDBFile, Simulation
+        import openmm.unit as unit
+    except ImportError:
+        raise RuntimeError(
+            "OpenMM/PDBFixer not available. Cannot generate MD conformations."
+        )
+
+    t0 = _time.monotonic()
+    logger.info("MD conformation generation: preparing system from %s", protein_path.name)
+
+    fixer = PDBFixer(filename=str(protein_path))
+    fixer.findMissingResidues()
+    fixer.findMissingAtoms()
+    fixer.addMissingAtoms()
+    fixer.addMissingHydrogens(7.0)
+    fixer.removeHeterogens(keepWater=False)
+
+    forcefield = ForceField("amber14-all.xml", "implicit/obc2.xml")
+    system = forcefield.createSystem(
+        fixer.topology,
+        nonbondedCutoff=1.0 * unit.nanometers,
+        constraints=HBonds,
+    )
+
+    dt = 0.004  # 4 fs timestep (safe with HBonds constraints)
+    integrator = LangevinMiddleIntegrator(
+        300 * unit.kelvin,
+        1.0 / unit.picosecond,
+        dt * unit.picoseconds,
+    )
+
+    platform = _get_openmm_platform()
+    if platform:
+        simulation = Simulation(fixer.topology, system, integrator, platform)
+    else:
+        simulation = Simulation(fixer.topology, system, integrator)
+
+    simulation.context.setPositions(fixer.positions)
+    logger.info("MD: minimizing energy (max 200 iterations)")
+    simulation.minimizeEnergy(maxIterations=200)
+    logger.info("MD: minimization done in %.1f s", _time.monotonic() - t0)
+
+    total_steps = 5000  # 20 ps at 4 fs/step
+    save_interval = total_steps // n_confs
+
+    logger.info(
+        "MD: running %d steps (%.0f ps), saving every %d steps",
+        total_steps, total_steps * dt, save_interval,
+    )
+
+    conf_paths = []
+    for i in range(n_confs):
+        step_t0 = _time.monotonic()
+        simulation.step(save_interval)
+
+        state = simulation.context.getState(getPositions=True)
+        positions = state.getPositions()
+
+        out_path = output_dir / f"conf_{i + 1}.pdb"
+        with open(out_path, "w") as f:
+            PDBFile.writeFile(fixer.topology, positions, f)
+        conf_paths.append(out_path)
+
+        elapsed_total = _time.monotonic() - t0
+        elapsed_step = _time.monotonic() - step_t0
+        logger.info(
+            "MD conf %d: saved at step %d (%.1f ps) — "
+            "step %.1fs, total %.1fs",
+            i + 1, (i + 1) * save_interval, (i + 1) * save_interval * dt,
+            elapsed_step, elapsed_total,
+        )
+
+    logger.info("MD: all %d conformations generated in %.1f s", n_confs, _time.monotonic() - t0)
+    return conf_paths
 
 
 def _run_p2rank(job):
@@ -438,7 +769,7 @@ def _run_energy_minimization(job):
 
     try:
         from pdbfixer import PDBFixer
-        from openmm import LangevinMiddleIntegrator, Platform
+        from openmm import LangevinMiddleIntegrator
         from openmm.app import ForceField, Modeller, PDBFile, Simulation
         import openmm.unit as unit
     except ImportError as exc:
@@ -528,11 +859,7 @@ def _minimize_single_pose(
         0.002 * unit.picoseconds,
     )
 
-    try:
-        platform = Platform.getPlatformByName("CPU")
-    except Exception:
-        platform = None
-
+    platform = _get_openmm_platform()
     if platform:
         simulation = Simulation(fixer.topology, system, integrator, platform)
     else:

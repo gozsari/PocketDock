@@ -15,7 +15,24 @@
         <div class="flex items-center justify-between mb-8">
             <div class="flex items-center w-full">
 
-                {% with past_p2rank="running_prep running_vina running_refinement running_mmgbsa completed" past_prep="running_vina running_refinement running_mmgbsa completed" past_vina="running_refinement running_mmgbsa completed" past_refine="running_mmgbsa completed" %}
+                {% with past_ensemble="running_p2rank running_prep running_vina running_refinement running_mmgbsa completed" past_p2rank="running_prep running_vina running_refinement running_mmgbsa completed" past_prep="running_vina running_refinement running_mmgbsa completed" past_vina="running_refinement running_mmgbsa completed" past_refine="running_mmgbsa completed" %}
+
+                {% if job.ensemble_method != 'none' and job.conformation_index == 0 %}
+                <!-- Step 0: Ensemble Generation (parent job only) -->
+                <div class="flex flex-col items-center flex-1">
+                    <div class="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold
+                        {% if job.status == 'running_ensemble' %}step-active animate-pulse-slow
+                        {% elif job.status in past_ensemble %}step-done
+                        {% else %}step-pending{% endif %}">
+                        {% if job.status in past_ensemble %}
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                        {% else %}1{% endif %}
+                    </div>
+                    <span class="text-xs mt-2 text-gray-600 text-center">Generating<br>Conformations</span>
+                </div>
+
+                <div class="flex-1 h-1 {% if job.status in past_ensemble %}bg-green-500{% elif job.status == 'running_ensemble' %}bg-gradient-to-r from-blue-500 to-gray-200{% else %}bg-gray-200{% endif %} rounded"></div>
+                {% endif %}
 
                 <!-- Step 1: P2Rank -->
                 <div class="flex flex-col items-center flex-1">
@@ -25,7 +42,7 @@
                         {% else %}step-pending{% endif %}">
                         {% if job.status in past_p2rank %}
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
-                        {% else %}1{% endif %}
+                        {% else %}{% if job.ensemble_method != 'none' and job.conformation_index == 0 %}2{% else %}1{% endif %}{% endif %}
                     </div>
                     <span class="text-xs mt-2 text-gray-600 text-center">Pocket<br>Detection</span>
                 </div>
@@ -187,6 +204,16 @@
                 <dt class="text-gray-500">MM-GBSA Rescoring</dt>
                 <dd class="text-gray-900 font-medium">{% if job.rescore_mmgbsa %}Enabled{% else %}Off{% endif %}</dd>
             </div>
+            {% if job.ensemble_method != 'none' %}
+            <div>
+                <dt class="text-gray-500">Ensemble Method</dt>
+                <dd class="text-gray-900 font-medium">{{ job.get_ensemble_method_display }}</dd>
+            </div>
+            <div>
+                <dt class="text-gray-500">Conformations</dt>
+                <dd class="text-gray-900 font-medium">{{ job.num_conformations }}</dd>
+            </div>
+            {% endif %}
         </dl>
     </div>
 </div>

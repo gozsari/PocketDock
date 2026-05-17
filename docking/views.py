@@ -26,7 +26,7 @@ from .serializers import (
 # ---------------------------------------------------------------------------
 # Queue helpers
 # ---------------------------------------------------------------------------
-RUNNING_STATUSES = ["running_p2rank", "running_prep", "running_vina", "running_refinement", "running_mmgbsa"]
+RUNNING_STATUSES = ["running_ensemble", "running_p2rank", "running_prep", "running_vina", "running_refinement", "running_mmgbsa"]
 DEFAULT_AVG_DURATION_S = 240  # 4 min — used until we have completed-job history
 
 
@@ -69,13 +69,21 @@ def upload_view(request):
     if request.method == "POST":
         form = DockingJobForm(request.POST, request.FILES)
         if form.is_valid():
-            job = form.save()
+            job = form.save(commit=False)
+            ensemble_enabled = form.cleaned_data.get("ensemble_enabled", False)
+            if ensemble_enabled and job.ensemble_method == "none":
+                job.ensemble_method = "nma"
+            if not ensemble_enabled:
+                job.ensemble_method = "none"
+            job.save()
             if not _enqueue_pipeline(job):
                 form.add_error(None,
                     "Job was created but could not be queued — the task broker is unreachable. "
                     "Please try again in a moment."
                 )
                 return render(request, "docking/upload.html", {"form": form, "batch_form": BatchDockingForm()})
+            if ensemble_enabled and job.ensemble_method != "none":
+                return redirect("docking:job_detail", job_id=job.id)
             return redirect("docking:job_detail", job_id=job.id)
     else:
         form = DockingJobForm()
@@ -94,6 +102,12 @@ def _handle_batch_upload(request):
 
     protein_file = batch_form.cleaned_data["protein_file"]
     ligand_files = request.FILES.getlist("ligand_files")
+    ensemble_enabled = batch_form.cleaned_data.get("ensemble_enabled", False)
+    ensemble_method = batch_form.cleaned_data.get("ensemble_method", "none")
+    if ensemble_enabled and ensemble_method == "none":
+        ensemble_method = "nma"
+    if not ensemble_enabled:
+        ensemble_method = "none"
     params = {
         "name": batch_form.cleaned_data.get("name", ""),
         "num_pockets": batch_form.cleaned_data["num_pockets"],
@@ -101,6 +115,8 @@ def _handle_batch_upload(request):
         "scoring_function": batch_form.cleaned_data["scoring_function"],
         "refine_poses": batch_form.cleaned_data.get("refine_poses", False),
         "rescore_mmgbsa": batch_form.cleaned_data.get("rescore_mmgbsa", False),
+        "ensemble_method": ensemble_method,
+        "num_conformations": batch_form.cleaned_data.get("num_conformations", 5) or 5,
     }
 
     ligands = []
@@ -190,6 +206,8 @@ def _create_batch_jobs(protein_file, ligands, params):
             scoring_function=params["scoring_function"],
             refine_poses=params.get("refine_poses", False),
             rescore_mmgbsa=params.get("rescore_mmgbsa", False),
+            ensemble_method=params.get("ensemble_method", "none"),
+            num_conformations=params.get("num_conformations", 5),
         )
         job.save()
         job.protein_file.save(protein_name, ContentFile(protein_bytes), save=True)
@@ -220,6 +238,12 @@ def _enqueue_pipeline(job):
 def job_detail_view(request, job_id):
     job = get_object_or_404(DockingJob, id=job_id)
     view_mode = request.GET.get("view", "")
+
+    if (job.ensemble_id
+            and job.ensemble_method != "none"
+            and job.conformation_index == 0
+            and job.status == DockingJob.Status.COMPLETED):
+        return redirect("docking:ensemble_detail", ensemble_id=job.ensemble_id)
 
     if job.status == DockingJob.Status.COMPLETED and view_mode == "results":
         return render(request, "docking/results.html", {"job": job})
@@ -387,6 +411,138 @@ def api_batch_status(request, batch_id):
         "progress_pct": int(100 * (completed + failed) / total) if total else 0,
         "all_done": (completed + failed) == total,
         "jobs": job_list,
+    })
+
+
+# ---------------------------------------------------------------------------
+# Ensemble views
+# ---------------------------------------------------------------------------
+def ensemble_detail_view(request, ensemble_id):
+    """Render the ensemble dashboard for all jobs sharing an ensemble_id."""
+    children = DockingJob.objects.filter(
+        ensemble_id=ensemble_id, conformation_index__gt=0,
+    ).order_by("conformation_index")
+
+    if not children.exists():
+        raise Http404("Ensemble not found.")
+
+    parent = DockingJob.objects.filter(
+        ensemble_id=ensemble_id, conformation_index=0,
+    ).first()
+
+    total = children.count()
+    completed = children.filter(status="completed").count()
+    failed = children.filter(status="failed").count()
+    running = children.filter(status__in=RUNNING_STATUSES).count()
+    pending = children.filter(status="pending").count()
+
+    first_child = children.first()
+    method_display = first_child.get_ensemble_method_display() if first_child else ""
+
+    all_results = DockingResult.objects.filter(
+        pocket__job__ensemble_id=ensemble_id,
+        pocket__job__conformation_index__gt=0,
+    ).select_related("pocket", "pocket__job").order_by("-combined_score")
+
+    best_results = all_results[:20]
+
+    conf_summaries = []
+    for child in children:
+        best = DockingResult.objects.filter(
+            pocket__job=child
+        ).aggregate(
+            best_affinity=Min("affinity"),
+            best_score=Max("combined_score"),
+        )
+        conf_summaries.append({
+            "job": child,
+            "best_affinity": best["best_affinity"],
+            "best_score": best["best_score"],
+            "results": DockingResult.objects.filter(
+                pocket__job=child
+            ).select_related("pocket").order_by("-combined_score")[:10],
+        })
+
+    ctx = {
+        "ensemble_id": ensemble_id,
+        "parent": parent,
+        "ensemble_name": parent.name if parent else (first_child.name.rsplit(" - conf", 1)[0] if first_child else ""),
+        "protein_filename": first_child.protein_filename if first_child else "",
+        "ligand_filename": first_child.ligand_filename if first_child else "",
+        "method_display": method_display,
+        "num_conformations": total,
+        "total": total,
+        "completed": completed,
+        "failed": failed,
+        "running": running,
+        "pending": pending,
+        "progress_pct": int(100 * (completed + failed) / total) if total else 0,
+        "all_done": (completed + failed) == total,
+        "best_results": best_results,
+        "conf_summaries": conf_summaries,
+    }
+    return render(request, "docking/ensemble.html", ctx)
+
+
+@api_view(["GET"])
+def api_ensemble_status(request, ensemble_id):
+    """JSON endpoint returning status of all children in an ensemble."""
+    children = DockingJob.objects.filter(
+        ensemble_id=ensemble_id, conformation_index__gt=0,
+    ).order_by("conformation_index")
+
+    if not children.exists():
+        return JsonResponse({"error": "Ensemble not found"}, status=404)
+
+    total = children.count()
+    completed = children.filter(status="completed").count()
+    failed = children.filter(status="failed").count()
+
+    all_results = DockingResult.objects.filter(
+        pocket__job__ensemble_id=ensemble_id,
+        pocket__job__conformation_index__gt=0,
+    ).select_related("pocket", "pocket__job").order_by("-combined_score")[:20]
+
+    best_list = []
+    for dr in all_results:
+        best_list.append({
+            "job_id": dr.pocket.job_id,
+            "conformation": dr.pocket.job.conformation_index,
+            "pocket_rank": dr.pocket.rank,
+            "pose_rank": dr.pose_rank,
+            "affinity": dr.affinity,
+            "combined_score": round(dr.combined_score, 3) if dr.combined_score else None,
+            "mmgbsa_score": dr.mmgbsa_score,
+        })
+
+    conf_list = []
+    for child in children:
+        best = DockingResult.objects.filter(
+            pocket__job=child
+        ).aggregate(
+            best_affinity=Min("affinity"),
+            best_score=Max("combined_score"),
+        )
+        conf_list.append({
+            "id": child.id,
+            "conformation_index": child.conformation_index,
+            "status": child.status,
+            "status_display": child.get_status_display(),
+            "best_affinity": best["best_affinity"],
+            "best_score": round(best["best_score"], 3) if best["best_score"] else None,
+        })
+
+    return JsonResponse({
+        "ensemble_id": ensemble_id,
+        "total": total,
+        "completed": completed,
+        "failed": failed,
+        "running": total - completed - failed - children.filter(status="pending").count(),
+        "pending": children.filter(status="pending").count(),
+        "progress_pct": int(100 * (completed + failed) / total) if total else 0,
+        "all_done": (completed + failed) == total,
+        "best_results": best_list,
+        "conformations": conf_list,
     })
 
 

@@ -12,6 +12,7 @@ def job_upload_path(instance, filename):
 class DockingJob(models.Model):
     class Status(models.TextChoices):
         PENDING = "pending", "Pending"
+        RUNNING_ENSEMBLE = "running_ensemble", "Generating Conformations"
         RUNNING_P2RANK = "running_p2rank", "Running P2Rank"
         RUNNING_PREP = "running_prep", "Preparing Structures"
         RUNNING_VINA = "running_vina", "Running AutoDock Vina"
@@ -19,6 +20,11 @@ class DockingJob(models.Model):
         RUNNING_MMGBSA = "running_mmgbsa", "Computing MM-GBSA"
         COMPLETED = "completed", "Completed"
         FAILED = "failed", "Failed"
+
+    class EnsembleMethod(models.TextChoices):
+        NONE = "none", "None"
+        NMA = "nma", "Normal Mode Analysis"
+        MD = "md", "Brief MD Simulation"
 
     name = models.CharField(max_length=255, blank=True, default="")
     job_dir = models.CharField(max_length=64, unique=True, editable=False)
@@ -62,6 +68,24 @@ class DockingJob(models.Model):
     ligand_name = models.CharField(
         max_length=255, blank=True, default="",
         help_text="Molecule name / title for batch dashboard display",
+    )
+    ensemble_id = models.CharField(
+        max_length=64, blank=True, default="", db_index=True,
+        help_text="Shared ID linking jobs in the same ensemble run",
+    )
+    ensemble_method = models.CharField(
+        max_length=10, choices=EnsembleMethod.choices,
+        default=EnsembleMethod.NONE,
+        help_text="Method used to generate receptor conformations",
+    )
+    conformation_index = models.PositiveIntegerField(
+        default=0,
+        help_text="0 = parent/original, 1..N = generated conformation",
+    )
+    num_conformations = models.PositiveIntegerField(
+        default=5,
+        validators=[MinValueValidator(2), MaxValueValidator(10)],
+        help_text="Number of receptor conformations to generate",
     )
     admet_properties = models.JSONField(
         default=dict,

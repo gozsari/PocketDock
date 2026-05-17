@@ -7,13 +7,25 @@ TAILWIND_CHECKBOX = "h-5 w-5 rounded border-gray-300 text-blue-600 focus:ring-bl
 
 
 class DockingJobForm(forms.ModelForm):
+    ensemble_enabled = forms.BooleanField(
+        required=False,
+        widget=forms.CheckboxInput(attrs={
+            "class": TAILWIND_CHECKBOX,
+            "id": "id_ensemble_enabled",
+        }),
+    )
+
     class Meta:
         model = DockingJob
-        fields = ["name", "protein_file", "ligand_file", "num_pockets", "exhaustiveness", "scoring_function", "refine_poses", "rescore_mmgbsa"]
+        fields = [
+            "name", "protein_file", "ligand_file", "num_pockets",
+            "exhaustiveness", "scoring_function", "refine_poses",
+            "rescore_mmgbsa", "ensemble_method", "num_conformations",
+        ]
         widgets = {
             "name": forms.TextInput(
                 attrs={
-                    "class": "w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent",
+                    "class": TAILWIND_INPUT,
                     "placeholder": "e.g. EGFR + Erlotinib",
                 }
             ),
@@ -32,35 +44,25 @@ class DockingJobForm(forms.ModelForm):
                 }
             ),
             "num_pockets": forms.NumberInput(
-                attrs={
-                    "class": "w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent",
-                    "min": 1,
-                    "max": 20,
-                }
+                attrs={"class": TAILWIND_INPUT, "min": 1, "max": 20}
             ),
             "exhaustiveness": forms.NumberInput(
-                attrs={
-                    "class": "w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent",
-                    "min": 1,
-                    "max": 64,
-                }
+                attrs={"class": TAILWIND_INPUT, "min": 1, "max": 64}
             ),
             "scoring_function": forms.Select(
-                attrs={
-                    "class": "w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent",
-                }
+                attrs={"class": TAILWIND_INPUT}
             ),
             "refine_poses": forms.CheckboxInput(
-                attrs={
-                    "class": "h-5 w-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500",
-                    "id": "id_refine_poses",
-                }
+                attrs={"class": TAILWIND_CHECKBOX, "id": "id_refine_poses"}
             ),
             "rescore_mmgbsa": forms.CheckboxInput(
-                attrs={
-                    "class": "h-5 w-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500",
-                    "id": "id_rescore_mmgbsa",
-                }
+                attrs={"class": TAILWIND_CHECKBOX, "id": "id_rescore_mmgbsa"}
+            ),
+            "ensemble_method": forms.Select(
+                attrs={"class": TAILWIND_INPUT, "id": "id_ensemble_method"}
+            ),
+            "num_conformations": forms.NumberInput(
+                attrs={"class": TAILWIND_INPUT, "min": 2, "max": 10, "id": "id_num_conformations"}
             ),
         }
 
@@ -164,6 +166,20 @@ class BatchDockingForm(forms.Form):
     rescore_mmgbsa = forms.BooleanField(
         required=False,
         widget=forms.CheckboxInput(attrs={"class": TAILWIND_CHECKBOX, "id": "id_rescore_mmgbsa"}),
+    )
+    ensemble_enabled = forms.BooleanField(
+        required=False,
+        widget=forms.CheckboxInput(attrs={"class": TAILWIND_CHECKBOX, "id": "id_ensemble_enabled"}),
+    )
+    ensemble_method = forms.ChoiceField(
+        choices=DockingJob.EnsembleMethod.choices,
+        initial=DockingJob.EnsembleMethod.NONE,
+        required=False,
+        widget=forms.Select(attrs={"class": TAILWIND_INPUT, "id": "id_ensemble_method"}),
+    )
+    num_conformations = forms.IntegerField(
+        initial=5, min_value=2, max_value=10, required=False,
+        widget=forms.NumberInput(attrs={"class": TAILWIND_INPUT, "min": 2, "max": 10, "id": "id_num_conformations"}),
     )
 
     def clean_protein_file(self):
