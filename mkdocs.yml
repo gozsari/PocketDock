@@ -83,6 +83,10 @@ nav:
       - The Results Page: user-guide/results.md
       - 3D Viewer Controls: user-guide/3d-viewer.md
       - Interaction Analysis: user-guide/interactions.md
+      - Batch Docking: user-guide/batch-docking.md
+      - Ensemble Docking: user-guide/ensemble-docking.md
+      - ADMET Properties: user-guide/admet.md
+      - MM-GBSA Rescoring: user-guide/mmgbsa-rescoring.md
   - Interpreting Results: interpreting-results.md
   - API Reference: api.md
   - Configuration: configuration.md

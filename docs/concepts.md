@@ -65,6 +65,41 @@ The intent: a pose ranks well only if it sits in a credible pocket *and* binds t
 - **Dissociation constant (Kd)** — affinity expressed as a concentration; PocketDock estimates it from the docking score using the Boltzmann relation. Useful as an intuitive number, but inherits all the uncertainty of the docking score.
 - **Interactions** — specific contacts between ligand and pocket residues (H-bonds, hydrophobic, salt bridges, π-stacking, π-cation, halogen). PocketDock detects six types geometrically and visualizes them in the 3D viewer. See [Interaction Analysis](user-guide/interactions.md).
 
+## Beyond single-ligand docking
+
+PocketDock v2.0 adds several capabilities on top of the basic pocket+Vina flow. Each has its own user-guide page; the short definitions below are enough to orient yourself.
+
+### Batch job
+
+A **batch job** is a single submission that creates one `DockingJob` per ligand against a shared protein. PocketDock supports up to 100 ligands per batch; multi-molecule SDF files are split automatically. All jobs in a batch share a `batch_id` and appear on a single dashboard at `/batch/<batch_id>/`. See [Batch Docking](user-guide/batch-docking.md).
+
+### Ensemble docking
+
+**Ensemble docking** generates several plausible conformations of the receptor and docks the ligand into all of them. PocketDock supports two methods:
+
+- **NMA (Normal Mode Analysis)** — fast (~30 s for 5 conformations). Builds an anisotropic network model from the Cα atoms, then perturbs the structure along the lowest normal modes. Captures slow, collective backbone motions.
+- **MD (short OpenMM molecular dynamics)** — slower (5–15 min). Runs a 20 ps Langevin simulation at 300 K with AMBER14 + OBC2 implicit solvent and saves N evenly-spaced snapshots. Captures local relaxation including side-chain rearrangements.
+
+The number of conformations (`num_conformations`) is configurable from 2 to 10. Each child conformation becomes its own docking job; the ensemble dashboard at `/ensemble/<ensemble_id>/` aggregates them and shows a consensus top-20 pose ranking by combined score. See [Ensemble Docking](user-guide/ensemble-docking.md).
+
+### ADMET, Lipinski, Veber, QED
+
+**ADMET** stands for *Absorption, Distribution, Metabolism, Excretion, Toxicity* — the in-vivo behaviors that determine whether a binder can become an actual drug. PocketDock doesn't predict ADMET directly; it computes a set of fast **drug-likeness descriptors** from RDKit that correlate with good oral-drug behavior.
+
+- **Lipinski's rule of five** — MW ≤ 500, logP ≤ 5, H-bond donors ≤ 5, H-bond acceptors ≤ 10. The count of broken rules is the **Lipinski violation** number.
+- **Veber's rules** — TPSA ≤ 140 Å² *and* rotatable bonds ≤ 10.
+- **QED** — Quantitative Estimate of Drug-likeness on `[0, 1]`. A single number that blends several Lipinski-style features and structural alerts. Marketed oral drugs typically sit in `0.5–0.8`.
+
+ADMET runs on every job automatically; the panel appears on the results page. See [ADMET Properties](user-guide/admet.md).
+
+### Pose refinement
+
+**Pose refinement** is an optional post-docking step that energy-minimizes each Vina pose with OpenMM (AMBER14-all force field + OBC2 implicit solvent, Langevin dynamics at 300 K, no constraints). The result is a slightly relaxed pose with reduced steric clashes and small geometry adjustments. After refinement, PocketDock re-runs the interaction analysis so the contact list reflects the relaxed geometry. Enabled by ticking **Refine poses** on the upload form.
+
+### MM-GBSA score
+
+A **second, physics-based binding-energy estimate** added to each pose when **MM-GBSA rescore** is enabled. PocketDock's implementation is a lightweight stand-in for the full AMBER MM-GBSA protocol: it uses RDKit MMFF94 + Gasteiger charges to compute a per-pose interaction energy (Coulomb + Lennard-Jones) plus a ligand-strain term, reported in **kJ/mol** (more negative = stronger binding). It is **not** a rigorous ΔG prediction — use it as a second opinion to Vina, not as a replacement for it. See [MM-GBSA Rescoring](user-guide/mmgbsa-rescoring.md).
+
 ## What PocketDock is *not*
 
 - Not a molecular dynamics simulator — there's no time evolution or solvation modeling.
