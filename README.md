@@ -4,6 +4,10 @@ A web-based platform that predicts druggable binding pockets with **P2Rank**, do
 
 **Documentation**: <https://pocketdock.readthedocs.io/>
 
+![PocketDock pipeline — Protein + Ligand → Pocket detection → Docking → Refined & rescored poses → Results](assets/pocketdock.png)
+
+
+
 ## Features
 
 - **Pocket detection** — automatic druggable-pocket prediction with P2Rank v2.5
