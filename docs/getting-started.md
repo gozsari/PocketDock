@@ -60,16 +60,36 @@ See [The Results Page](user-guide/results.md) for the full tour.
 
 ## Local development (without Docker)
 
-Use this only if you have P2Rank and AutoDock Vina installed natively (PocketDock won't fetch them for you).
+This route is more work — Docker is strongly recommended unless you have a specific reason to install everything by hand. PocketDock relies on several scientific libraries (RDKit, OpenMM, PDBFixer, Gemmi) and two external binaries (P2Rank, AutoDock Vina) that are *not* installable via `pip` alone.
+
+### 1. Create a conda/mamba environment with the scientific stack
+
+[Mamba](https://github.com/mamba-org/mamba) or [Conda](https://docs.conda.io/) is required — these libraries are not on PyPI in a usable form.
 
 ```bash
-# Create and activate a virtual environment
-python -m venv venv
-source venv/bin/activate
+mamba create -n pocketdock python=3.11 -c conda-forge
+mamba activate pocketdock
+mamba install -c conda-forge rdkit openmm pdbfixer gemmi
+```
 
-# Install Python dependencies
+### 2. Install Python dependencies
+
+```bash
 pip install -r requirements.txt
+```
 
+### 3. Install the external docking binaries
+
+PocketDock does not bundle these — install them yourself and either put them on `PATH` or set the matching environment variable.
+
+| Binary | Version | Download | Env var |
+|---|---|---|---|
+| **P2Rank** | 2.5 | <https://github.com/rdk/p2rank/releases/tag/2.5> | `P2RANK_BIN=/path/to/prank` |
+| **AutoDock Vina** | 1.2.7 | <https://github.com/ccsb-scripps/AutoDock-Vina/releases/tag/v1.2.7> | Must be on `PATH` as `vina` |
+
+### 4. Start Redis, the worker, and the web server
+
+```bash
 # Apply database migrations
 python manage.py migrate
 
@@ -83,7 +103,7 @@ celery -A pocketdock worker -l info &
 python manage.py runserver
 ```
 
-You'll need to set the environment variable `P2RANK_BIN` to the absolute path of your local `prank` executable. See [Configuration](configuration.md) for all environment variables.
+See [Configuration](configuration.md) for the full list of environment variables.
 
 ## Next steps
 

@@ -50,9 +50,7 @@ class TestParseVinaOutput:
 
 class TestExtractResidueCoordinates:
     def test_valid_extraction(self):
-        result = extract_residue_coordinates(
-            FIXTURES / "mini_protein.pdb", "A_42_ALA,A_43_VAL"
-        )
+        result = extract_residue_coordinates(FIXTURES / "mini_protein.pdb", "A_42_ALA,A_43_VAL")
         assert result is not None
         assert "size_x" in result
         assert result["size_x"] >= 0
@@ -65,7 +63,5 @@ class TestExtractResidueCoordinates:
         assert extract_residue_coordinates("/tmp/nope.pdb", "A_42_ALA") is None
 
     def test_no_matching_residues(self):
-        result = extract_residue_coordinates(
-            FIXTURES / "mini_protein.pdb", "A_999_ALA"
-        )
+        result = extract_residue_coordinates(FIXTURES / "mini_protein.pdb", "A_999_ALA")
         assert result is None

@@ -85,7 +85,6 @@ def _run_ensemble_docking(job):
     Parent ensemble job: generate N conformations, then create and enqueue
     a child DockingJob for each conformation.
     """
-    import shutil
     import uuid
 
     from django.core.files.base import ContentFile
@@ -115,7 +114,9 @@ def _run_ensemble_docking(job):
 
     logger.info(
         "Ensemble job %s: generated %d conformations via %s",
-        job.id, len(conf_paths), job.ensemble_method,
+        job.id,
+        len(conf_paths),
+        job.ensemble_method,
     )
 
     ligand_bytes = ligand_path.read_bytes()
@@ -138,10 +139,14 @@ def _run_ensemble_docking(job):
         child.save()
 
         child.protein_file.save(
-            f"conf_{idx}.pdb", ContentFile(conf_bytes), save=True,
+            f"conf_{idx}.pdb",
+            ContentFile(conf_bytes),
+            save=True,
         )
         child.ligand_file.save(
-            ligand_filename, ContentFile(ligand_bytes), save=True,
+            ligand_filename,
+            ContentFile(ligand_bytes),
+            save=True,
         )
 
         task = run_docking_pipeline.delay(child.id)
@@ -150,7 +155,9 @@ def _run_ensemble_docking(job):
 
         logger.info(
             "Ensemble job %s: spawned child job %s (conf %d)",
-            job.id, child.id, idx,
+            job.id,
+            child.id,
+            idx,
         )
 
     job.status = DockingJob.Status.COMPLETED
@@ -181,7 +188,7 @@ def _generate_conformations_nma(protein_path, n_confs, output_dir):
     ca_line_indices = []
 
     with open(protein_path) as f:
-        for i, line in enumerate(f):
+        for line in f:
             if line.startswith(("ATOM", "HETATM")):
                 pdb_lines.append(line)
                 atom_name = line[12:16].strip()
@@ -225,17 +232,18 @@ def _generate_conformations_nma(protein_path, n_confs, output_dir):
         for j in range(i + 1, n_ca):
             diff = ca_coords[i] - ca_coords[j]
             dist2 = np.dot(diff, diff)
-            if dist2 < ANM_CUTOFF ** 2:
+            if dist2 < ANM_CUTOFF**2:
                 outer = np.outer(diff, diff) * (-ANM_GAMMA / dist2)
                 ii, jj = 3 * i, 3 * j
-                hessian[ii:ii+3, jj:jj+3] = outer
-                hessian[jj:jj+3, ii:ii+3] = outer
-                hessian[ii:ii+3, ii:ii+3] -= outer
-                hessian[jj:jj+3, jj:jj+3] -= outer
+                hessian[ii : ii + 3, jj : jj + 3] = outer
+                hessian[jj : jj + 3, ii : ii + 3] = outer
+                hessian[ii : ii + 3, ii : ii + 3] -= outer
+                hessian[jj : jj + 3, jj : jj + 3] -= outer
 
     n_modes = min(20, n_ca * 3 - 7)
     eigenvalues, eigenvectors = eigh(
-        hessian, subset_by_index=[6, 6 + n_modes - 1],
+        hessian,
+        subset_by_index=[6, 6 + n_modes - 1],
     )
 
     non_ca_mask = np.ones(n_atoms, dtype=bool)
@@ -269,7 +277,7 @@ def _generate_conformations_nma(protein_path, n_confs, output_dir):
         out_path = output_dir / f"conf_{i + 1}.pdb"
         atom_counter = 0
         with open(out_path, "w") as f:
-            for line_idx, line in enumerate(pdb_lines):
+            for line in pdb_lines:
                 if line.startswith(("ATOM", "HETATM")):
                     x, y, z = perturbed[atom_counter]
                     new_line = line[:30] + f"{x:8.3f}{y:8.3f}{z:8.3f}" + line[54:]
@@ -279,12 +287,20 @@ def _generate_conformations_nma(protein_path, n_confs, output_dir):
                     f.write(line)
         conf_paths.append(out_path)
 
-        rmsd = np.sqrt(np.mean(np.sum(
-            (perturbed - all_atom_coords) ** 2, axis=1,
-        )))
+        rmsd = np.sqrt(
+            np.mean(
+                np.sum(
+                    (perturbed - all_atom_coords) ** 2,
+                    axis=1,
+                )
+            )
+        )
         logger.info(
             "NMA conf %d: mode %d, scale %.1f, RMSD %.2f A",
-            i + 1, mode_idx, scale * sign, rmsd,
+            i + 1,
+            mode_idx,
+            scale * sign,
+            rmsd,
         )
 
     return conf_paths
@@ -296,19 +312,18 @@ def _generate_conformations_md(protein_path, n_confs, output_dir):
     Runs Langevin dynamics in implicit solvent (AMBER14/OBC2), saves
     evenly-spaced snapshots as PDB conformations.
     """
-    import io
 
     import time as _time
 
     try:
-        from pdbfixer import PDBFixer
+        import openmm.unit as unit
         from openmm import LangevinMiddleIntegrator
         from openmm.app import ForceField, HBonds, PDBFile, Simulation
-        import openmm.unit as unit
-    except ImportError:
+        from pdbfixer import PDBFixer
+    except ImportError as exc:
         raise RuntimeError(
             "OpenMM/PDBFixer not available. Cannot generate MD conformations."
-        )
+        ) from exc
 
     t0 = _time.monotonic()
     logger.info("MD conformation generation: preparing system from %s", protein_path.name)
@@ -350,7 +365,9 @@ def _generate_conformations_md(protein_path, n_confs, output_dir):
 
     logger.info(
         "MD: running %d steps (%.0f ps), saving every %d steps",
-        total_steps, total_steps * dt, save_interval,
+        total_steps,
+        total_steps * dt,
+        save_interval,
     )
 
     conf_paths = []
@@ -369,10 +386,12 @@ def _generate_conformations_md(protein_path, n_confs, output_dir):
         elapsed_total = _time.monotonic() - t0
         elapsed_step = _time.monotonic() - step_t0
         logger.info(
-            "MD conf %d: saved at step %d (%.1f ps) — "
-            "step %.1fs, total %.1fs",
-            i + 1, (i + 1) * save_interval, (i + 1) * save_interval * dt,
-            elapsed_step, elapsed_total,
+            "MD conf %d: saved at step %d (%.1f ps) — step %.1fs, total %.1fs",
+            i + 1,
+            (i + 1) * save_interval,
+            (i + 1) * save_interval * dt,
+            elapsed_step,
+            elapsed_total,
         )
 
     logger.info("MD: all %d conformations generated in %.1f s", n_confs, _time.monotonic() - t0)
@@ -394,9 +413,12 @@ def _run_p2rank(job):
 
     p2rank_bin = settings.P2RANK_BIN
     cmd = [
-        p2rank_bin, "predict",
-        "-f", str(protein_path),
-        "-o", str(p2rank_output),
+        p2rank_bin,
+        "predict",
+        "-f",
+        str(protein_path),
+        "-o",
+        str(p2rank_output),
     ]
     logger.info("Running P2Rank: %s", " ".join(cmd))
 
@@ -443,11 +465,11 @@ def _run_p2rank(job):
 
 
 _RES_CLASSES = {
-    'polar': {'SER', 'THR', 'ASN', 'GLN', 'CYS', 'TYR'},
-    'hydrophobic': {'ALA', 'VAL', 'LEU', 'ILE', 'MET', 'PHE', 'TRP', 'PRO'},
-    'positive': {'ARG', 'LYS', 'HIS'},
-    'negative': {'ASP', 'GLU'},
-    'special': {'GLY'},
+    "polar": {"SER", "THR", "ASN", "GLN", "CYS", "TYR"},
+    "hydrophobic": {"ALA", "VAL", "LEU", "ILE", "MET", "PHE", "TRP", "PRO"},
+    "positive": {"ARG", "LYS", "HIS"},
+    "negative": {"ASP", "GLU"},
+    "special": {"GLY"},
 }
 _RES_TO_CLASS = {}
 for cls, names in _RES_CLASSES.items():
@@ -458,6 +480,7 @@ for cls, names in _RES_CLASSES.items():
 def _classify_pocket_residues(residue_ids_str: str) -> dict:
     """Classify pocket residues into polar/hydrophobic/positive/negative/special."""
     import re
+
     counts = {k: 0 for k in _RES_CLASSES}
     total = 0
     for token in residue_ids_str.split(","):
@@ -467,13 +490,13 @@ def _classify_pocket_residues(residue_ids_str: str) -> dict:
             match = re.match(r"([A-Z]{3})\d+", token)
         if match:
             resn = match.group(1)
-            cls = _RES_TO_CLASS.get(resn, 'special')
+            cls = _RES_TO_CLASS.get(resn, "special")
             counts[cls] += 1
             total += 1
     pcts = {}
     for k, v in counts.items():
         pcts[k] = round(v / total * 100, 1) if total > 0 else 0
-    pcts['total'] = total
+    pcts["total"] = total
     return pcts
 
 
@@ -509,9 +532,9 @@ def _run_structure_prep(job):
 
 def _prepare_ligand_pdbqt(ligand_path: Path, pdbqt_path: Path):
     """Convert SDF/MOL2 ligand to PDBQT using RDKit + Meeko Python API."""
+    from meeko import MoleculePreparation, PDBQTWriterLegacy
     from rdkit import Chem
     from rdkit.Chem import AllChem
-    from meeko import MoleculePreparation, PDBQTWriterLegacy
 
     suffix = ligand_path.suffix.lower()
 
@@ -549,7 +572,7 @@ def _prepare_ligand_pdbqt(ligand_path: Path, pdbqt_path: Path):
 
 def _pdb_to_pdbqt_simple(pdb_path: Path, pdbqt_path: Path):
     """Minimal PDB->PDBQT conversion for receptors when other tools aren't available."""
-    with open(pdb_path, "r") as fin, open(pdbqt_path, "w") as fout:
+    with open(pdb_path) as fin, open(pdbqt_path, "w") as fout:
         for line in fin:
             if line.startswith(("ATOM", "HETATM")):
                 atom_name = line[12:16].strip()
@@ -568,7 +591,7 @@ def _pdb_to_pdbqt_simple(pdb_path: Path, pdbqt_path: Path):
 def _compute_admet_properties(job):
     """Compute ADMET / drug-likeness descriptors from the ligand using RDKit."""
     from rdkit import Chem
-    from rdkit.Chem import Descriptors, QED, rdMolDescriptors
+    from rdkit.Chem import QED, Descriptors, rdMolDescriptors
 
     ligand_path = Path(job.ligand_file.path)
     suffix = ligand_path.suffix.lower()
@@ -610,12 +633,14 @@ def _compute_admet_properties(job):
     except Exception:
         qed_score = None
 
-    lipinski_violations = sum([
-        mw > 500,
-        logp > 5,
-        hba > 10,
-        hbd > 5,
-    ])
+    lipinski_violations = sum(
+        [
+            mw > 500,
+            logp > 5,
+            hba > 10,
+            hbd > 5,
+        ]
+    )
 
     veber_pass = tpsa <= 140 and rot_bonds <= 10
 
@@ -667,24 +692,26 @@ def _run_vina_docking(job):
     ligand_heavy_atoms = 0
     ligand_path = Path(job.ligand_file.path)
     try:
-        with open(ligand_path, "r") as f:
+        with open(ligand_path) as f:
             for line in f:
                 if line.startswith(("ATOM", "HETATM")):
                     elem = line[76:78].strip() if len(line) > 76 else ""
                     if elem != "H":
                         ligand_heavy_atoms += 1
         if ligand_heavy_atoms == 0 and ligand_path.suffix.lower() == ".sdf":
-            with open(ligand_path, "r") as f:
+            with open(ligand_path) as f:
                 lines = f.readlines()
                 if len(lines) >= 4:
                     counts_line = lines[3].strip().split()
                     if len(counts_line) >= 1:
                         ligand_heavy_atoms = int(counts_line[0])
-    except (ValueError, IndexError, IOError) as exc:
+    except (OSError, ValueError, IndexError) as exc:
         logger.warning("Could not count ligand heavy atoms for job %s: %s", job.id, exc)
 
     for pocket in pockets:
-        logger.info("Docking pocket %d (p=%.2f) for job %s", pocket.rank, pocket.probability, job.id)
+        logger.info(
+            "Docking pocket %d (p=%.2f) for job %s", pocket.rank, pocket.probability, job.id
+        )
 
         # Compute grid box size from residue spread
         box_size_x = box_size_y = box_size_z = default_box
@@ -698,26 +725,36 @@ def _run_vina_docking(job):
 
         vina_cmd = [
             "vina",
-            "--receptor", str(receptor_pdbqt),
-            "--ligand", str(ligand_pdbqt),
-            "--center_x", str(pocket.center_x),
-            "--center_y", str(pocket.center_y),
-            "--center_z", str(pocket.center_z),
-            "--size_x", str(round(box_size_x, 1)),
-            "--size_y", str(round(box_size_y, 1)),
-            "--size_z", str(round(box_size_z, 1)),
-            "--exhaustiveness", str(job.exhaustiveness),
-            "--scoring", job.scoring_function,
-            "--num_modes", str(settings.VINA_NUM_MODES),
-            "--out", str(output_pdbqt),
+            "--receptor",
+            str(receptor_pdbqt),
+            "--ligand",
+            str(ligand_pdbqt),
+            "--center_x",
+            str(pocket.center_x),
+            "--center_y",
+            str(pocket.center_y),
+            "--center_z",
+            str(pocket.center_z),
+            "--size_x",
+            str(round(box_size_x, 1)),
+            "--size_y",
+            str(round(box_size_y, 1)),
+            "--size_z",
+            str(round(box_size_z, 1)),
+            "--exhaustiveness",
+            str(job.exhaustiveness),
+            "--scoring",
+            job.scoring_function,
+            "--num_modes",
+            str(settings.VINA_NUM_MODES),
+            "--out",
+            str(output_pdbqt),
         ]
         logger.info("Running Vina: %s", " ".join(vina_cmd))
 
         result = subprocess.run(vina_cmd, capture_output=True, text=True, timeout=1800)
         if result.returncode != 0:
-            logger.error(
-                "Vina failed for pocket %d: %s", pocket.rank, result.stderr[:500]
-            )
+            logger.error("Vina failed for pocket %d: %s", pocket.rank, result.stderr[:500])
             continue
 
         # Parse results and convert each pose to its own PDB file
@@ -768,17 +805,15 @@ def _run_energy_minimization(job):
     results_dir = job_path / "results"
 
     try:
-        from pdbfixer import PDBFixer
-        from openmm import LangevinMiddleIntegrator
-        from openmm.app import ForceField, Modeller, PDBFile, Simulation
         import openmm.unit as unit
+        from openmm import LangevinMiddleIntegrator, Platform
+        from openmm.app import ForceField, Modeller, PDBFile, Simulation
+        from pdbfixer import PDBFixer
     except ImportError as exc:
         logger.warning("OpenMM not available, skipping refinement: %s", exc)
         return
 
-    all_results = DockingResult.objects.filter(
-        pocket__job=job
-    ).select_related("pocket")
+    all_results = DockingResult.objects.filter(pocket__job=job).select_related("pocket")
 
     refined_count = 0
     for dr in all_results:
@@ -788,7 +823,9 @@ def _run_energy_minimization(job):
 
         try:
             _minimize_single_pose(
-                protein_path, pose_pdb, dr,
+                protein_path,
+                pose_pdb,
+                dr,
                 PDBFixer=PDBFixer,
                 ForceField=ForceField,
                 Modeller=Modeller,
@@ -802,21 +839,35 @@ def _run_energy_minimization(job):
         except Exception as exc:
             logger.warning(
                 "Refinement failed for pocket %d pose %d: %s",
-                dr.pocket.rank, dr.pose_rank, exc,
+                dr.pocket.rank,
+                dr.pose_rank,
+                exc,
             )
 
-    logger.info("Energy minimization: refined %d/%d poses for job %s",
-                refined_count, all_results.count(), job.id)
+    logger.info(
+        "Energy minimization: refined %d/%d poses for job %s",
+        refined_count,
+        all_results.count(),
+        job.id,
+    )
 
 
 def _minimize_single_pose(
-    protein_path, pose_pdb_path, docking_result,
-    *, PDBFixer, ForceField, Modeller, PDBFile, Simulation,
-    LangevinMiddleIntegrator, Platform, unit,
+    protein_path,
+    pose_pdb_path,
+    docking_result,
+    *,
+    PDBFixer,
+    ForceField,
+    Modeller,
+    PDBFile,
+    Simulation,
+    LangevinMiddleIntegrator,
+    Platform,
+    unit,
 ):
     """Minimize a single protein-ligand complex in implicit solvent."""
     import io
-    import tempfile
 
     # Read and combine protein + ligand into a single PDB
     protein_lines = []
@@ -880,35 +931,43 @@ def _minimize_single_pose(
 
     logger.info(
         "Pose pocket %d pose %d: energy %.1f -> %.1f kJ/mol (delta %.1f)",
-        docking_result.pocket.rank, docking_result.pose_rank,
-        energy_before, energy_after, energy_after - energy_before,
+        docking_result.pocket.rank,
+        docking_result.pose_rank,
+        energy_before,
+        energy_after,
+        energy_after - energy_before,
     )
 
     # Extract refined ligand coordinates and overwrite the pose PDB
     positions = state_after.getPositions(asNumpy=True).value_in_unit(unit.angstroms)
-
-    # Count protein atoms to find where ligand starts
-    n_protein_atoms = len(protein_lines) - protein_lines.count("TER\n") if "TER\n" in protein_lines else 0
-    # More reliable: count ATOM/HETATM lines in protein
-    n_prot = sum(1 for l in protein_lines if l.startswith(("ATOM", "HETATM")))
-
-    # We need to figure out how many atoms PDBFixer added (hydrogens etc.)
-    # Instead, write the full minimized ligand portion back
-    # Re-read original ligand to get the atom count
-    orig_lig_atoms = sum(1 for l in ligand_lines if l.startswith(("ATOM", "HETATM")))
-
-    # Write refined ligand PDB from the minimized positions
-    # The topology has all atoms; we extract only the last orig_lig_atoms worth
     all_atoms = list(fixer.topology.atoms())
-    total_atoms = len(all_atoms)
 
     # Find ligand atoms by looking for HETATM residues at the end
     lig_atom_indices = []
     for i, atom in enumerate(all_atoms):
         if atom.residue.name not in (
-            "ALA", "ARG", "ASN", "ASP", "CYS", "GLN", "GLU", "GLY",
-            "HIS", "ILE", "LEU", "LYS", "MET", "PHE", "PRO", "SER",
-            "THR", "TRP", "TYR", "VAL", "HOH", "WAT",
+            "ALA",
+            "ARG",
+            "ASN",
+            "ASP",
+            "CYS",
+            "GLN",
+            "GLU",
+            "GLY",
+            "HIS",
+            "ILE",
+            "LEU",
+            "LYS",
+            "MET",
+            "PHE",
+            "PRO",
+            "SER",
+            "THR",
+            "TRP",
+            "TYR",
+            "VAL",
+            "HOH",
+            "WAT",
         ):
             lig_atom_indices.append(i)
 
@@ -944,9 +1003,7 @@ def _run_mmgbsa_rescoring(job):
     Computes interaction energy (Coulomb + LJ) and ligand strain energy.
     No OpenFF/ambertools dependencies -- works on all platforms.
     """
-    import numpy as np
     from rdkit import Chem
-    from rdkit.Chem import AllChem
 
     from .models import DockingJob, DockingResult
 
@@ -972,9 +1029,7 @@ def _run_mmgbsa_rescoring(job):
         logger.warning("MM-GBSA: could not prepare ligand template for job %s", job.id)
         return
 
-    all_results = DockingResult.objects.filter(
-        pocket__job=job
-    ).select_related("pocket")
+    all_results = DockingResult.objects.filter(pocket__job=job).select_related("pocket")
 
     scored_count = 0
     for dr in all_results:
@@ -984,23 +1039,34 @@ def _run_mmgbsa_rescoring(job):
 
         try:
             score = _compute_mmgbsa_single(
-                protein_data, pose_pdb, template_mol, ligand_template_data,
+                protein_data,
+                pose_pdb,
+                template_mol,
+                ligand_template_data,
             )
             dr.mmgbsa_score = round(score, 2)
             dr.save(update_fields=["mmgbsa_score"])
             scored_count += 1
             logger.info(
                 "MM-GBSA pocket %d pose %d: dG = %.1f kJ/mol",
-                dr.pocket.rank, dr.pose_rank, score,
+                dr.pocket.rank,
+                dr.pose_rank,
+                score,
             )
         except Exception as exc:
             logger.warning(
                 "MM-GBSA failed for pocket %d pose %d: %s",
-                dr.pocket.rank, dr.pose_rank, exc,
+                dr.pocket.rank,
+                dr.pose_rank,
+                exc,
             )
 
-    logger.info("MM-GBSA rescoring: scored %d/%d poses for job %s",
-                scored_count, all_results.count(), job.id)
+    logger.info(
+        "MM-GBSA rescoring: scored %d/%d poses for job %s",
+        scored_count,
+        all_results.count(),
+        job.id,
+    )
 
 
 def _parse_protein_for_mmgbsa(protein_path):
@@ -1018,6 +1084,7 @@ def _parse_protein_for_mmgbsa(protein_path):
         pass
 
     from rdkit.Chem import AllChem
+
     AllChem.ComputeGasteigerCharges(mol)
 
     pt = Chem.GetPeriodicTable()
@@ -1031,7 +1098,7 @@ def _parse_protein_for_mmgbsa(protein_path):
         pos = conf.GetAtomPosition(i)
         coords.append([pos.x, pos.y, pos.z])
         try:
-            q = atom.GetDoubleProp('_GasteigerCharge')
+            q = atom.GetDoubleProp("_GasteigerCharge")
         except KeyError:
             q = 0.0
         charges.append(np.clip(q, -1.0, 1.0) if np.isfinite(q) else 0.0)
@@ -1064,7 +1131,7 @@ def _prepare_ligand_template(template_mol):
         if atom.GetAtomicNum() == 1:
             continue
         try:
-            q = atom.GetDoubleProp('_GasteigerCharge')
+            q = atom.GetDoubleProp("_GasteigerCharge")
         except KeyError:
             q = 0.0
         charges.append(np.clip(q, -1.0, 1.0) if np.isfinite(q) else 0.0)
@@ -1138,7 +1205,9 @@ def _compute_mmgbsa_single(protein_data, ligand_pdb_path, template_mol, ligand_t
     if n_pdb != n_tpl:
         logger.debug(
             "Heavy atom count mismatch: PDB has %d, template has %d; "
-            "truncating to min for interaction energy", n_pdb, n_tpl,
+            "truncating to min for interaction energy",
+            n_pdb,
+            n_tpl,
         )
         n = min(n_pdb, n_tpl)
         lig_coords = lig_coords[:n]
@@ -1151,7 +1220,7 @@ def _compute_mmgbsa_single(protein_data, ligand_pdb_path, template_mol, ligand_t
     prot_radii = protein_data["radii"]
 
     diff = prot_coords[:, np.newaxis, :] - lig_coords[np.newaxis, :, :]  # (P, L, 3)
-    dist = np.sqrt(np.sum(diff ** 2, axis=2))  # (P, L)
+    dist = np.sqrt(np.sum(diff**2, axis=2))  # (P, L)
     dist = np.maximum(dist, 1.5)
 
     mask = dist < CUTOFF
@@ -1161,7 +1230,7 @@ def _compute_mmgbsa_single(protein_data, ligand_pdb_path, template_mol, ligand_t
 
     sigma = (prot_radii[:, np.newaxis] + lig_radii[np.newaxis, :]) * 0.5  # (P, L)
     sr6 = (sigma[mask] / dist[mask]) ** 6
-    e_lj = np.sum(4.0 * LJ_EPS * (sr6 ** 2 - sr6))
+    e_lj = np.sum(4.0 * LJ_EPS * (sr6**2 - sr6))
 
     e_interaction = (e_coulomb + e_lj) * KCAL_TO_KJ
 
@@ -1178,10 +1247,7 @@ def _run_interaction_analysis(job):
     protein_path = Path(job.protein_file.path)
     results_dir = job_path / "results"
 
-    results = list(
-        job.pockets.values_list("rank", flat=True)
-        .order_by("rank")[: job.num_pockets]
-    )
+    results = list(job.pockets.values_list("rank", flat=True).order_by("rank")[: job.num_pockets])
 
     for pocket_rank in results:
         from .models import DockingResult, Pocket
@@ -1197,13 +1263,16 @@ def _run_interaction_analysis(job):
             # Detect interactions using coordinate geometry
             interactions = _detect_interactions_geometry(protein_path, pose_pdb)
 
-            interaction_json = results_dir / f"pocket_{pocket_rank}_pose_{dr.pose_rank}_interactions.json"
+            interaction_json = (
+                results_dir / f"pocket_{pocket_rank}_pose_{dr.pose_rank}_interactions.json"
+            )
             with open(interaction_json, "w") as f:
                 json.dump(interactions, f, indent=2)
 
             logger.info(
                 "Interaction analysis done: pocket %d pose %d - %d H-bonds, %d hydrophobic, %d salt bridges",
-                pocket_rank, dr.pose_rank,
+                pocket_rank,
+                dr.pose_rank,
                 len(interactions.get("hydrogen_bonds", [])),
                 len(interactions.get("hydrophobic", [])),
                 len(interactions.get("salt_bridges", [])),
@@ -1223,31 +1292,43 @@ def _detect_interactions_geometry(protein_path: Path, ligand_pdb_path: Path) -> 
     HYDROPHOBIC_ELEMENTS = {"C"}
     HYDROPHOBIC_RES = {"ALA", "VAL", "LEU", "ILE", "PHE", "TRP", "PRO", "MET"}
     BACKBONE_ATOMS = {"N", "CA", "C", "O"}
-    POSITIVE_RES = {"ARG", "LYS", "HIS"}
     NEGATIVE_RES = {"ASP", "GLU"}
     SALT_BRIDGE_ATOMS = {
-        "LYS": {"NZ"}, "ARG": {"NH1", "NH2", "NE"}, "HIS": {"ND1", "NE2"},
-        "ASP": {"OD1", "OD2"}, "GLU": {"OE1", "OE2"},
+        "LYS": {"NZ"},
+        "ARG": {"NH1", "NH2", "NE"},
+        "HIS": {"ND1", "NE2"},
+        "ASP": {"OD1", "OD2"},
+        "GLU": {"OE1", "OE2"},
     }
-    AROMATIC_RES = {"PHE", "TYR", "TRP", "HIS"}
 
     HBOND_DONORS = {
-        "ARG": {"NE", "NH1", "NH2"}, "LYS": {"NZ"},
-        "HIS": {"ND1", "NE2"}, "ASN": {"ND2"}, "GLN": {"NE2"},
-        "TRP": {"NE1"}, "SER": {"OG"}, "THR": {"OG1"},
-        "TYR": {"OH"}, "CYS": {"SG"},
+        "ARG": {"NE", "NH1", "NH2"},
+        "LYS": {"NZ"},
+        "HIS": {"ND1", "NE2"},
+        "ASN": {"ND2"},
+        "GLN": {"NE2"},
+        "TRP": {"NE1"},
+        "SER": {"OG"},
+        "THR": {"OG1"},
+        "TYR": {"OH"},
+        "CYS": {"SG"},
     }
     HBOND_ACCEPTORS = {
-        "ASP": {"OD1", "OD2"}, "GLU": {"OE1", "OE2"},
-        "ASN": {"OD1"}, "GLN": {"OE1"},
-        "SER": {"OG"}, "THR": {"OG1"}, "TYR": {"OH"},
-        "HIS": {"ND1", "NE2"}, "CYS": {"SG"}, "MET": {"SD"},
+        "ASP": {"OD1", "OD2"},
+        "GLU": {"OE1", "OE2"},
+        "ASN": {"OD1"},
+        "GLN": {"OE1"},
+        "SER": {"OG"},
+        "THR": {"OG1"},
+        "TYR": {"OH"},
+        "HIS": {"ND1", "NE2"},
+        "CYS": {"SG"},
+        "MET": {"SD"},
     }
     AROMATIC_RING_ATOMS = {
         "PHE": [["CG", "CD1", "CD2", "CE1", "CE2", "CZ"]],
         "TYR": [["CG", "CD1", "CD2", "CE1", "CE2", "CZ"]],
-        "TRP": [["CG", "CD1", "CD2", "NE1", "CE2"],
-                ["CD2", "CE2", "CE3", "CZ2", "CZ3", "CH2"]],
+        "TRP": [["CG", "CD1", "CD2", "NE1", "CE2"], ["CD2", "CE2", "CE3", "CZ2", "CZ3", "CH2"]],
         "HIS": [["CG", "ND1", "CD2", "CE1", "NE2"]],
     }
     PI_CATION_DIST = 9.0
@@ -1267,27 +1348,31 @@ def _detect_interactions_geometry(protein_path: Path, ligand_pdb_path: Path) -> 
 
     def parse_pdb_atoms(path):
         atoms = []
-        with open(path, "r") as f:
+        with open(path) as f:
             for line in f:
                 if line.startswith(("ATOM", "HETATM")):
                     try:
-                        atoms.append({
-                            "serial": int(line[6:11]),
-                            "name": line[12:16].strip(),
-                            "resn": line[17:20].strip(),
-                            "resi": line[22:26].strip(),
-                            "chain": line[21:22].strip(),
-                            "x": float(line[30:38]),
-                            "y": float(line[38:46]),
-                            "z": float(line[46:54]),
-                            "element": line[76:78].strip() if len(line) >= 78 else line[12:16].strip()[0],
-                        })
+                        atoms.append(
+                            {
+                                "serial": int(line[6:11]),
+                                "name": line[12:16].strip(),
+                                "resn": line[17:20].strip(),
+                                "resi": line[22:26].strip(),
+                                "chain": line[21:22].strip(),
+                                "x": float(line[30:38]),
+                                "y": float(line[38:46]),
+                                "z": float(line[46:54]),
+                                "element": line[76:78].strip()
+                                if len(line) >= 78
+                                else line[12:16].strip()[0],
+                            }
+                        )
                     except (ValueError, IndexError):
                         continue
         return atoms
 
     def dist(a, b):
-        return math.sqrt((a["x"]-b["x"])**2 + (a["y"]-b["y"])**2 + (a["z"]-b["z"])**2)
+        return math.sqrt((a["x"] - b["x"]) ** 2 + (a["y"] - b["y"]) ** 2 + (a["z"] - b["z"]) ** 2)
 
     def centroid(atoms_list):
         n = len(atoms_list)
@@ -1300,30 +1385,32 @@ def _detect_interactions_geometry(protein_path: Path, ligand_pdb_path: Path) -> 
         if len(atoms_list) < 3:
             return (0, 0, 1)
         a, b, c = atoms_list[0], atoms_list[1], atoms_list[2]
-        v1 = (b["x"]-a["x"], b["y"]-a["y"], b["z"]-a["z"])
-        v2 = (c["x"]-a["x"], c["y"]-a["y"], c["z"]-a["z"])
-        nx = v1[1]*v2[2] - v1[2]*v2[1]
-        ny = v1[2]*v2[0] - v1[0]*v2[2]
-        nz = v1[0]*v2[1] - v1[1]*v2[0]
-        mag = math.sqrt(nx*nx + ny*ny + nz*nz)
+        v1 = (b["x"] - a["x"], b["y"] - a["y"], b["z"] - a["z"])
+        v2 = (c["x"] - a["x"], c["y"] - a["y"], c["z"] - a["z"])
+        nx = v1[1] * v2[2] - v1[2] * v2[1]
+        ny = v1[2] * v2[0] - v1[0] * v2[2]
+        nz = v1[0] * v2[1] - v1[1] * v2[0]
+        mag = math.sqrt(nx * nx + ny * ny + nz * nz)
         if mag < 1e-9:
             return (0, 0, 1)
-        return (nx/mag, ny/mag, nz/mag)
+        return (nx / mag, ny / mag, nz / mag)
 
     def angle_between_normals(n1, n2):
-        dot = abs(n1[0]*n2[0] + n1[1]*n2[1] + n1[2]*n2[2])
+        dot = abs(n1[0] * n2[0] + n1[1] * n2[1] + n1[2] * n2[2])
         dot = min(1.0, dot)
         return math.degrees(math.acos(dot))
 
     def angle_normal_to_vector(ring_normal, ring_centroid, point):
         """Angle between ring normal and vector from centroid to point (degrees)."""
-        v = (point["x"] - ring_centroid["x"],
-             point["y"] - ring_centroid["y"],
-             point["z"] - ring_centroid["z"])
-        mag_v = math.sqrt(v[0]**2 + v[1]**2 + v[2]**2)
+        v = (
+            point["x"] - ring_centroid["x"],
+            point["y"] - ring_centroid["y"],
+            point["z"] - ring_centroid["z"],
+        )
+        mag_v = math.sqrt(v[0] ** 2 + v[1] ** 2 + v[2] ** 2)
         if mag_v < 1e-9:
             return 0.0
-        dot = abs(ring_normal[0]*v[0] + ring_normal[1]*v[1] + ring_normal[2]*v[2])
+        dot = abs(ring_normal[0] * v[0] + ring_normal[1] * v[1] + ring_normal[2] * v[2])
         cos_a = min(1.0, dot / mag_v)
         return math.degrees(math.acos(cos_a))
 
@@ -1337,11 +1424,11 @@ def _detect_interactions_geometry(protein_path: Path, ligand_pdb_path: Path) -> 
 
     def angle_three_points(a, b, c):
         """Angle at point b formed by a-b-c, in degrees."""
-        v1 = (a["x"]-b["x"], a["y"]-b["y"], a["z"]-b["z"])
-        v2 = (c["x"]-b["x"], c["y"]-b["y"], c["z"]-b["z"])
-        dot = v1[0]*v2[0] + v1[1]*v2[1] + v1[2]*v2[2]
-        m1 = math.sqrt(v1[0]**2 + v1[1]**2 + v1[2]**2)
-        m2 = math.sqrt(v2[0]**2 + v2[1]**2 + v2[2]**2)
+        v1 = (a["x"] - b["x"], a["y"] - b["y"], a["z"] - b["z"])
+        v2 = (c["x"] - b["x"], c["y"] - b["y"], c["z"] - b["z"])
+        dot = v1[0] * v2[0] + v1[1] * v2[1] + v1[2] * v2[2]
+        m1 = math.sqrt(v1[0] ** 2 + v1[1] ** 2 + v1[2] ** 2)
+        m2 = math.sqrt(v2[0] ** 2 + v2[1] ** 2 + v2[2] ** 2)
         if m1 < 1e-9 or m2 < 1e-9:
             return 0
         cos_a = max(-1.0, min(1.0, dot / (m1 * m2)))
@@ -1372,17 +1459,25 @@ def _detect_interactions_geometry(protein_path: Path, ligand_pdb_path: Path) -> 
 
                 # H-bonds: N/O/S donor-acceptor pairs with complementarity check,
                 # deduplicated to closest contact per (residue, ligand_atom)
-                if d <= HBOND_DIST and pa["element"] in HBOND_ELEMENTS and la["element"] in HBOND_ELEMENTS:
-                    prot_is_donor = (pa["name"] in HBOND_DONORS.get(pa["resn"], set())
-                                     or (pa["name"] == "N" and pa["name"] in BACKBONE_ATOMS))
-                    prot_is_acceptor = (pa["name"] in HBOND_ACCEPTORS.get(pa["resn"], set())
-                                        or (pa["name"] == "O" and pa["name"] in BACKBONE_ATOMS))
+                if (
+                    d <= HBOND_DIST
+                    and pa["element"] in HBOND_ELEMENTS
+                    and la["element"] in HBOND_ELEMENTS
+                ):
+                    prot_is_donor = pa["name"] in HBOND_DONORS.get(pa["resn"], set()) or (
+                        pa["name"] == "N" and pa["name"] in BACKBONE_ATOMS
+                    )
+                    prot_is_acceptor = pa["name"] in HBOND_ACCEPTORS.get(pa["resn"], set()) or (
+                        pa["name"] == "O" and pa["name"] in BACKBONE_ATOMS
+                    )
                     if not prot_is_donor and not prot_is_acceptor:
                         prot_is_donor = pa["element"] == "N"
                         prot_is_acceptor = pa["element"] in {"O", "S"}
                     lig_is_donor = la["element"] in {"N", "O"}
                     lig_is_acceptor = la["element"] in {"O", "N", "S"}
-                    complementary = (prot_is_donor and lig_is_acceptor) or (prot_is_acceptor and lig_is_donor)
+                    complementary = (prot_is_donor and lig_is_acceptor) or (
+                        prot_is_acceptor and lig_is_donor
+                    )
                     if complementary:
                         key = (res_label, la["name"])
                         if key not in best_hbonds or d < best_hbonds[key]["distance"]:
@@ -1406,11 +1501,13 @@ def _detect_interactions_geometry(protein_path: Path, ligand_pdb_path: Path) -> 
 
                 # Hydrophobic: sidechain C of hydrophobic residues only,
                 # deduplicated to closest contact per (residue, ligand_atom)
-                if (d <= HYDROPHOBIC_DIST
-                        and pa["element"] in HYDROPHOBIC_ELEMENTS
-                        and la["element"] in HYDROPHOBIC_ELEMENTS
-                        and pa["resn"] in HYDROPHOBIC_RES
-                        and pa["name"] not in BACKBONE_ATOMS):
+                if (
+                    d <= HYDROPHOBIC_DIST
+                    and pa["element"] in HYDROPHOBIC_ELEMENTS
+                    and la["element"] in HYDROPHOBIC_ELEMENTS
+                    and pa["resn"] in HYDROPHOBIC_RES
+                    and pa["name"] not in BACKBONE_ATOMS
+                ):
                     key = (res_label, la["name"])
                     if key not in best_hydro or d < best_hydro[key]["distance"]:
                         best_hydro[key] = {
@@ -1428,18 +1525,26 @@ def _detect_interactions_geometry(protein_path: Path, ligand_pdb_path: Path) -> 
                 if d <= SALT_BRIDGE_DIST:
                     allowed = SALT_BRIDGE_ATOMS.get(pa["resn"])
                     if allowed and pa["name"] in allowed and la["element"] in {"N", "O"}:
-                        existing = [sb for sb in interactions["salt_bridges"]
-                                    if sb["protein_res"] == res_label and sb["ligand_atom_id"] == la["atom_id"]]
+                        existing = [
+                            sb
+                            for sb in interactions["salt_bridges"]
+                            if sb["protein_res"] == res_label
+                            and sb["ligand_atom_id"] == la["atom_id"]
+                        ]
                         if not existing:
-                            interactions["salt_bridges"].append({
-                                "protein_res": res_label,
-                                "protein_atom": pa["name"],
-                                "ligand_atom_id": la["atom_id"],
-                                "distance": round(d, 2),
-                                "type": "negative" if pa["resn"] in NEGATIVE_RES else "positive",
-                                "protein_coords": [pa["x"], pa["y"], pa["z"]],
-                                "ligand_coords": [la["x"], la["y"], la["z"]],
-                            })
+                            interactions["salt_bridges"].append(
+                                {
+                                    "protein_res": res_label,
+                                    "protein_atom": pa["name"],
+                                    "ligand_atom_id": la["atom_id"],
+                                    "distance": round(d, 2),
+                                    "type": "negative"
+                                    if pa["resn"] in NEGATIVE_RES
+                                    else "positive",
+                                    "protein_coords": [pa["x"], pa["y"], pa["z"]],
+                                    "ligand_coords": [la["x"], la["y"], la["z"]],
+                                }
+                            )
 
         interactions["hydrogen_bonds"] = list(best_hbonds.values())
         interactions["hydrophobic"] = list(best_hydro.values())
@@ -1458,10 +1563,16 @@ def _detect_interactions_geometry(protein_path: Path, ligand_pdb_path: Path) -> 
                 if len(ring_atoms) >= 3:
                     c = centroid(ring_atoms)
                     n = normal(ring_atoms)
-                    prot_rings.append({
-                        "resn": resn, "resi": resi, "chain": chain,
-                        "centroid": c, "normal": n, "atoms": ring_atoms,
-                    })
+                    prot_rings.append(
+                        {
+                            "resn": resn,
+                            "resi": resi,
+                            "chain": chain,
+                            "centroid": c,
+                            "normal": n,
+                            "atoms": ring_atoms,
+                        }
+                    )
 
         # ── Build ligand ring centroids & normals ──
         lig_ring_eligible = [a for a in lig_atoms if a["element"] in {"C", "N", "O", "S"}]
@@ -1525,24 +1636,38 @@ def _detect_interactions_geometry(protein_path: Path, ligand_pdb_path: Path) -> 
                     else:
                         stack_type = "tilted"
                     seen_pi.add(res_label)
-                    interactions["pi_stacking"].append({
-                        "protein_res": res_label,
-                        "ligand_atom_id": "ring",
-                        "distance": round(d, 2),
-                        "angle": round(ang, 1),
-                        "type": stack_type,
-                        "protein_coords": [pr["centroid"]["x"], pr["centroid"]["y"], pr["centroid"]["z"]],
-                        "ligand_coords": [lr["centroid"]["x"], lr["centroid"]["y"], lr["centroid"]["z"]],
-                    })
+                    interactions["pi_stacking"].append(
+                        {
+                            "protein_res": res_label,
+                            "ligand_atom_id": "ring",
+                            "distance": round(d, 2),
+                            "angle": round(ang, 1),
+                            "type": stack_type,
+                            "protein_coords": [
+                                pr["centroid"]["x"],
+                                pr["centroid"]["y"],
+                                pr["centroid"]["z"],
+                            ],
+                            "ligand_coords": [
+                                lr["centroid"]["x"],
+                                lr["centroid"]["y"],
+                                lr["centroid"]["z"],
+                            ],
+                        }
+                    )
                     break
 
         # ── Pi-cation detection ──
         prot_cations = []
         for (resn, resi, chain), atom_map in prot_by_res.items():
             if resn == "LYS" and "NZ" in atom_map:
-                prot_cations.append({"resn": resn, "resi": resi, "chain": chain, "atom": atom_map["NZ"]})
+                prot_cations.append(
+                    {"resn": resn, "resi": resi, "chain": chain, "atom": atom_map["NZ"]}
+                )
             elif resn == "ARG" and "CZ" in atom_map:
-                prot_cations.append({"resn": resn, "resi": resi, "chain": chain, "atom": atom_map["CZ"]})
+                prot_cations.append(
+                    {"resn": resn, "resi": resi, "chain": chain, "atom": atom_map["CZ"]}
+                )
 
         seen_pi_cation = set()
         for cat in prot_cations:
@@ -1555,17 +1680,27 @@ def _detect_interactions_geometry(protein_path: Path, ligand_pdb_path: Path) -> 
                     ang = angle_normal_to_vector(lr["normal"], lr["centroid"], cat["atom"])
                     geometry = classify_pi_cation_geometry(ang)
                     seen_pi_cation.add(res_label)
-                    interactions["pi_cation"].append({
-                        "protein_res": res_label,
-                        "ligand_atom_id": "ring",
-                        "distance": round(d, 2),
-                        "angle": round(ang, 1),
-                        "type": "protein_cation",
-                        "geometry": geometry,
-                        "protein_coords": [cat["atom"]["x"], cat["atom"]["y"], cat["atom"]["z"]],
-                        "ligand_coords": [lr["centroid"]["x"], lr["centroid"]["y"], lr["centroid"]["z"]],
-                        "ligand_ring_normal": list(lr["normal"]),
-                    })
+                    interactions["pi_cation"].append(
+                        {
+                            "protein_res": res_label,
+                            "ligand_atom_id": "ring",
+                            "distance": round(d, 2),
+                            "angle": round(ang, 1),
+                            "type": "protein_cation",
+                            "geometry": geometry,
+                            "protein_coords": [
+                                cat["atom"]["x"],
+                                cat["atom"]["y"],
+                                cat["atom"]["z"],
+                            ],
+                            "ligand_coords": [
+                                lr["centroid"]["x"],
+                                lr["centroid"]["y"],
+                                lr["centroid"]["z"],
+                            ],
+                            "ligand_ring_normal": list(lr["normal"]),
+                        }
+                    )
                     break
 
         lig_nitrogens = [a for a in lig_atoms if a["element"] == "N"]
@@ -1579,17 +1714,23 @@ def _detect_interactions_geometry(protein_path: Path, ligand_pdb_path: Path) -> 
                     ang = angle_normal_to_vector(pr["normal"], pr["centroid"], ln)
                     geometry = classify_pi_cation_geometry(ang)
                     seen_pi_cation.add(res_label)
-                    interactions["pi_cation"].append({
-                        "protein_res": res_label,
-                        "ligand_atom_id": ln["atom_id"],
-                        "distance": round(d, 2),
-                        "angle": round(ang, 1),
-                        "type": "protein_ring",
-                        "geometry": geometry,
-                        "protein_coords": [pr["centroid"]["x"], pr["centroid"]["y"], pr["centroid"]["z"]],
-                        "ligand_coords": [ln["x"], ln["y"], ln["z"]],
-                        "protein_ring_normal": list(pr["normal"]),
-                    })
+                    interactions["pi_cation"].append(
+                        {
+                            "protein_res": res_label,
+                            "ligand_atom_id": ln["atom_id"],
+                            "distance": round(d, 2),
+                            "angle": round(ang, 1),
+                            "type": "protein_ring",
+                            "geometry": geometry,
+                            "protein_coords": [
+                                pr["centroid"]["x"],
+                                pr["centroid"]["y"],
+                                pr["centroid"]["z"],
+                            ],
+                            "ligand_coords": [ln["x"], ln["y"], ln["z"]],
+                            "protein_ring_normal": list(pr["normal"]),
+                        }
+                    )
                     break
 
         # ── Halogen bond detection ──
@@ -1639,12 +1780,14 @@ def _detect_interactions_geometry(protein_path: Path, ligand_pdb_path: Path) -> 
             for pa in prot_atoms:
                 d = dist(la, pa)
                 if d <= NEARBY_DIST:
-                    contacts.append({
-                        "protein_res": f"{pa['resn']}{pa['resi']}:{pa['chain']}",
-                        "protein_atom": pa["name"],
-                        "distance": round(d, 2),
-                        "element": pa["element"],
-                    })
+                    contacts.append(
+                        {
+                            "protein_res": f"{pa['resn']}{pa['resi']}:{pa['chain']}",
+                            "protein_atom": pa["name"],
+                            "distance": round(d, 2),
+                            "element": pa["element"],
+                        }
+                    )
             if contacts:
                 contacts.sort(key=lambda c: c["distance"])
                 seen_res = set()
@@ -1653,12 +1796,14 @@ def _detect_interactions_geometry(protein_path: Path, ligand_pdb_path: Path) -> 
                     if c["protein_res"] not in seen_res:
                         seen_res.add(c["protein_res"])
                         deduped.append(c)
-                nearby.append({
-                    "ligand_atom_id": la["atom_id"],
-                    "ligand_element": la["element"],
-                    "ligand_coords": [la["x"], la["y"], la["z"]],
-                    "contacts": deduped,
-                })
+                nearby.append(
+                    {
+                        "ligand_atom_id": la["atom_id"],
+                        "ligand_element": la["element"],
+                        "ligand_coords": [la["x"], la["y"], la["z"]],
+                        "contacts": deduped,
+                    }
+                )
         interactions["nearby_residues"] = nearby
 
     except Exception as exc:
@@ -1673,7 +1818,7 @@ def _pdbqt_to_pdb(pdbqt_path: Path, pdb_path: Path, model_num: int = 1):
     lines = []
     in_target = False
 
-    with open(pdbqt_path, "r") as f:
+    with open(pdbqt_path) as f:
         for line in f:
             if line.startswith("MODEL"):
                 current_model += 1

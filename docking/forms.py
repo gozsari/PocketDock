@@ -9,18 +9,27 @@ TAILWIND_CHECKBOX = "h-5 w-5 rounded border-gray-300 text-blue-600 focus:ring-bl
 class DockingJobForm(forms.ModelForm):
     ensemble_enabled = forms.BooleanField(
         required=False,
-        widget=forms.CheckboxInput(attrs={
-            "class": TAILWIND_CHECKBOX,
-            "id": "id_ensemble_enabled",
-        }),
+        widget=forms.CheckboxInput(
+            attrs={
+                "class": TAILWIND_CHECKBOX,
+                "id": "id_ensemble_enabled",
+            }
+        ),
     )
 
     class Meta:
         model = DockingJob
         fields = [
-            "name", "protein_file", "ligand_file", "num_pockets",
-            "exhaustiveness", "scoring_function", "refine_poses",
-            "rescore_mmgbsa", "ensemble_method", "num_conformations",
+            "name",
+            "protein_file",
+            "ligand_file",
+            "num_pockets",
+            "exhaustiveness",
+            "scoring_function",
+            "refine_poses",
+            "rescore_mmgbsa",
+            "ensemble_method",
+            "num_conformations",
         ]
         widgets = {
             "name": forms.TextInput(
@@ -43,15 +52,11 @@ class DockingJobForm(forms.ModelForm):
                     "id": "ligand-file-input",
                 }
             ),
-            "num_pockets": forms.NumberInput(
-                attrs={"class": TAILWIND_INPUT, "min": 1, "max": 20}
-            ),
+            "num_pockets": forms.NumberInput(attrs={"class": TAILWIND_INPUT, "min": 1, "max": 20}),
             "exhaustiveness": forms.NumberInput(
                 attrs={"class": TAILWIND_INPUT, "min": 1, "max": 64}
             ),
-            "scoring_function": forms.Select(
-                attrs={"class": TAILWIND_INPUT}
-            ),
+            "scoring_function": forms.Select(attrs={"class": TAILWIND_INPUT}),
             "refine_poses": forms.CheckboxInput(
                 attrs={"class": TAILWIND_CHECKBOX, "id": "id_refine_poses"}
             ),
@@ -125,33 +130,44 @@ class BatchDockingForm(forms.Form):
     """Form for batch docking: one protein + multiple ligands."""
 
     name = forms.CharField(
-        max_length=255, required=False,
-        widget=forms.TextInput(attrs={
-            "class": TAILWIND_INPUT,
-            "placeholder": "e.g. EGFR library screen",
-        }),
+        max_length=255,
+        required=False,
+        widget=forms.TextInput(
+            attrs={
+                "class": TAILWIND_INPUT,
+                "placeholder": "e.g. EGFR library screen",
+            }
+        ),
     )
     protein_file = forms.FileField(
-        widget=forms.ClearableFileInput(attrs={
-            "class": "hidden",
-            "accept": ".pdb,.pdb.gz,.cif",
-            "id": "protein-file-input",
-        }),
+        widget=forms.ClearableFileInput(
+            attrs={
+                "class": "hidden",
+                "accept": ".pdb,.pdb.gz,.cif",
+                "id": "protein-file-input",
+            }
+        ),
     )
     ligand_files = MultipleFileField(
         required=False,
-        widget=MultipleFileInput(attrs={
-            "class": "hidden",
-            "accept": ".sdf,.mol2,.mol",
-            "id": "ligand-file-input",
-        }),
+        widget=MultipleFileInput(
+            attrs={
+                "class": "hidden",
+                "accept": ".sdf,.mol2,.mol",
+                "id": "ligand-file-input",
+            }
+        ),
     )
     num_pockets = forms.IntegerField(
-        initial=3, min_value=1, max_value=20,
+        initial=3,
+        min_value=1,
+        max_value=20,
         widget=forms.NumberInput(attrs={"class": TAILWIND_INPUT, "min": 1, "max": 20}),
     )
     exhaustiveness = forms.IntegerField(
-        initial=8, min_value=1, max_value=64,
+        initial=8,
+        min_value=1,
+        max_value=64,
         widget=forms.NumberInput(attrs={"class": TAILWIND_INPUT, "min": 1, "max": 64}),
     )
     scoring_function = forms.ChoiceField(
@@ -178,8 +194,13 @@ class BatchDockingForm(forms.Form):
         widget=forms.Select(attrs={"class": TAILWIND_INPUT, "id": "id_ensemble_method"}),
     )
     num_conformations = forms.IntegerField(
-        initial=5, min_value=2, max_value=10, required=False,
-        widget=forms.NumberInput(attrs={"class": TAILWIND_INPUT, "min": 2, "max": 10, "id": "id_num_conformations"}),
+        initial=5,
+        min_value=2,
+        max_value=10,
+        required=False,
+        widget=forms.NumberInput(
+            attrs={"class": TAILWIND_INPUT, "min": 2, "max": 10, "id": "id_num_conformations"}
+        ),
     )
 
     def clean_protein_file(self):
@@ -200,9 +221,7 @@ class BatchDockingForm(forms.Form):
         if not ligand_files:
             raise forms.ValidationError("At least one ligand file is required.")
         if len(ligand_files) > MAX_BATCH_LIGANDS:
-            raise forms.ValidationError(
-                f"Maximum {MAX_BATCH_LIGANDS} ligand files per batch."
-            )
+            raise forms.ValidationError(f"Maximum {MAX_BATCH_LIGANDS} ligand files per batch.")
         valid_exts = (".sdf", ".mol2", ".mol")
         for f in ligand_files:
             if not any(f.name.lower().endswith(ext) for ext in valid_exts):

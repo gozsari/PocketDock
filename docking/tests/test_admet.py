@@ -1,6 +1,7 @@
-import pytest
 from pathlib import Path
 from unittest.mock import patch
+
+import pytest
 
 from docking.tasks import _compute_admet_properties
 
@@ -79,8 +80,6 @@ $$$$
 
     def test_handles_unsupported_format(self, sample_job):
         """Gracefully handles unsupported file extensions."""
-        import os
-        old_path = sample_job.ligand_file.path
         new_name = sample_job.ligand_file.name.replace(".sdf", ".xyz")
         sample_job.ligand_file.name = new_name
         sample_job.save()
@@ -116,11 +115,13 @@ class TestAdmetInPipeline:
         """Pipeline should call _compute_admet_properties."""
         from docking.tasks import run_docking_pipeline
 
-        with patch("docking.tasks._run_p2rank"), \
-             patch("docking.tasks._run_structure_prep"), \
-             patch("docking.tasks._compute_admet_properties") as mock_admet, \
-             patch("docking.tasks._run_vina_docking"), \
-             patch("docking.tasks._run_interaction_analysis"):
+        with (
+            patch("docking.tasks._run_p2rank"),
+            patch("docking.tasks._run_structure_prep"),
+            patch("docking.tasks._compute_admet_properties") as mock_admet,
+            patch("docking.tasks._run_vina_docking"),
+            patch("docking.tasks._run_interaction_analysis"),
+        ):
             run_docking_pipeline.run(sample_job.id)
 
         mock_admet.assert_called_once()

@@ -30,9 +30,7 @@ class DockingJob(models.Model):
     job_dir = models.CharField(max_length=64, unique=True, editable=False)
     protein_file = models.FileField(upload_to=job_upload_path)
     ligand_file = models.FileField(upload_to=job_upload_path)
-    status = models.CharField(
-        max_length=20, choices=Status.choices, default=Status.PENDING
-    )
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING)
     num_pockets = models.PositiveIntegerField(
         default=3,
         help_text="Number of top pockets to dock against",
@@ -62,19 +60,28 @@ class DockingJob(models.Model):
         help_text="Compute MM-GBSA binding free energy for each pose",
     )
     batch_id = models.CharField(
-        max_length=64, blank=True, default="", db_index=True,
+        max_length=64,
+        blank=True,
+        default="",
+        db_index=True,
         help_text="Shared ID linking jobs in the same batch submission",
     )
     ligand_name = models.CharField(
-        max_length=255, blank=True, default="",
+        max_length=255,
+        blank=True,
+        default="",
         help_text="Molecule name / title for batch dashboard display",
     )
     ensemble_id = models.CharField(
-        max_length=64, blank=True, default="", db_index=True,
+        max_length=64,
+        blank=True,
+        default="",
+        db_index=True,
         help_text="Shared ID linking jobs in the same ensemble run",
     )
     ensemble_method = models.CharField(
-        max_length=10, choices=EnsembleMethod.choices,
+        max_length=10,
+        choices=EnsembleMethod.choices,
         default=EnsembleMethod.NONE,
         help_text="Method used to generate receptor conformations",
     )
@@ -111,6 +118,7 @@ class DockingJob(models.Model):
     @property
     def job_path(self) -> Path:
         from django.conf import settings
+
         return Path(settings.MEDIA_ROOT) / "jobs" / self.job_dir
 
     @property
@@ -185,7 +193,5 @@ class DockingResult(models.Model):
         """
         norm_affinity = min(self.affinity, 0) / max_affinity
         norm_affinity = max(0.0, min(1.0, norm_affinity))
-        self.combined_score = (w_pocket * self.pocket.probability) + (
-            w_affinity * norm_affinity
-        )
+        self.combined_score = (w_pocket * self.pocket.probability) + (w_affinity * norm_affinity)
         return self.combined_score

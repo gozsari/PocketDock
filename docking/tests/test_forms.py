@@ -1,4 +1,3 @@
-import pytest
 from django.core.files.uploadedfile import SimpleUploadedFile
 
 from docking.forms import DockingJobForm
@@ -14,7 +13,12 @@ def _make_file(name, content=b"data", size=None):
 class TestDockingJobForm:
     def test_valid_form(self):
         form = DockingJobForm(
-            data={"name": "test", "num_pockets": 3, "exhaustiveness": 8, "scoring_function": "vina"},
+            data={
+                "name": "test",
+                "num_pockets": 3,
+                "exhaustiveness": 8,
+                "scoring_function": "vina",
+            },
             files={
                 "protein_file": _make_file("protein.pdb"),
                 "ligand_file": _make_file("ligand.sdf"),
@@ -89,7 +93,12 @@ class TestDockingJobForm:
 
     def test_scoring_function_vina(self):
         form = DockingJobForm(
-            data={"name": "test", "num_pockets": 3, "exhaustiveness": 8, "scoring_function": "vina"},
+            data={
+                "name": "test",
+                "num_pockets": 3,
+                "exhaustiveness": 8,
+                "scoring_function": "vina",
+            },
             files={
                 "protein_file": _make_file("protein.pdb"),
                 "ligand_file": _make_file("ligand.sdf"),
@@ -99,7 +108,12 @@ class TestDockingJobForm:
 
     def test_scoring_function_vinardo(self):
         form = DockingJobForm(
-            data={"name": "test", "num_pockets": 3, "exhaustiveness": 8, "scoring_function": "vinardo"},
+            data={
+                "name": "test",
+                "num_pockets": 3,
+                "exhaustiveness": 8,
+                "scoring_function": "vinardo",
+            },
             files={
                 "protein_file": _make_file("protein.pdb"),
                 "ligand_file": _make_file("ligand.sdf"),
@@ -109,7 +123,12 @@ class TestDockingJobForm:
 
     def test_scoring_function_invalid(self):
         form = DockingJobForm(
-            data={"name": "test", "num_pockets": 3, "exhaustiveness": 8, "scoring_function": "invalid"},
+            data={
+                "name": "test",
+                "num_pockets": 3,
+                "exhaustiveness": 8,
+                "scoring_function": "invalid",
+            },
             files={
                 "protein_file": _make_file("protein.pdb"),
                 "ligand_file": _make_file("ligand.sdf"),

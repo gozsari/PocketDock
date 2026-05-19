@@ -1,6 +1,6 @@
 # Configuration
 
-All runtime configuration is via environment variables. Set them in `docker-compose.yml`, your shell, or whatever orchestration layer you're using.
+All runtime configuration is via environment variables. Copy [.env.example](https://github.com/gozsari/PocketDock/blob/main/.env.example) to `.env` and edit it, set variables directly in `docker-compose.yml`, export them in your shell, or supply them through whatever orchestration layer you're using.
 
 ## Environment variables
 
@@ -8,9 +8,9 @@ All runtime configuration is via environment variables. Set them in `docker-comp
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `DJANGO_SECRET_KEY` | `django-insecure-pocketdock-dev-key-change-in-production` | Django's cryptographic signing key. **Override in any non-trivial deployment.** |
-| `DEBUG` | `1` | `1` enables Django debug mode (verbose errors). Set to `0` for production. |
-| `ALLOWED_HOSTS` | `*` | Comma-separated list of hostnames Django will serve. Tighten in production. |
+| `DJANGO_SECRET_KEY` | *(auto-generated in DEBUG mode; required when `DEBUG=0`)* | Django's cryptographic signing key. The app refuses to start with `DEBUG=0` if this is unset. Generate one with `python -c "import secrets; print(secrets.token_urlsafe(50))"`. |
+| `DEBUG` | `0` (Python default) / `1` (in bundled docker-compose) | `1` enables Django debug mode (verbose errors, auto-generated SECRET_KEY). The bundled docker-compose sets `DEBUG=1` so the quick-start works out of the box; override via `.env` for production. |
+| `ALLOWED_HOSTS` | `localhost,127.0.0.1` | Comma-separated list of hostnames Django will serve. Add your domain in production. |
 
 ### Celery / Redis
 

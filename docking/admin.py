@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import DockingJob, Pocket, DockingResult
+from .models import DockingJob, DockingResult, Pocket
 
 
 @admin.register(DockingJob)

@@ -1,3 +1,11 @@
+# PocketDock pip dependencies.
+#
+# IMPORTANT: this file alone is NOT enough for a working install.
+# The scientific stack (RDKit, OpenMM, PDBFixer, Gemmi) must be installed
+# via conda/mamba first, and the external binaries P2Rank and AutoDock Vina
+# must be installed separately. See docs/getting-started.md for the full
+# local-install walkthrough, or just use `docker compose up`.
+
 Django>=5.1,<6.0
 djangorestframework>=3.15,<4.0
 celery>=5.4,<6.0

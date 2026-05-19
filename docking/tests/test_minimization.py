@@ -7,11 +7,11 @@ marked with pytest.mark.skipif and will be skipped gracefully.
 """
 
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
-from docking.models import DockingJob, DockingResult, Pocket
+from docking.models import DockingJob
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -26,12 +26,15 @@ class TestRunEnergyMinimization:
         sample_job.save()
 
         with patch("docking.tasks.logger") as mock_logger:
-            with patch.dict("sys.modules", {
-                "pdbfixer": None,
-                "openmm": None,
-                "openmm.app": None,
-                "openmm.unit": None,
-            }):
+            with patch.dict(
+                "sys.modules",
+                {
+                    "pdbfixer": None,
+                    "openmm": None,
+                    "openmm.app": None,
+                    "openmm.unit": None,
+                },
+            ):
                 # Import will fail inside the function, should be caught
                 _run_energy_minimization(sample_job)
 
@@ -86,11 +89,13 @@ class TestRefinementIntegration:
         sample_job.refine_poses = True
         sample_job.save()
 
-        with patch("docking.tasks._run_p2rank"), \
-             patch("docking.tasks._run_structure_prep"), \
-             patch("docking.tasks._run_vina_docking"), \
-             patch("docking.tasks._run_interaction_analysis"), \
-             patch("docking.tasks._run_energy_minimization") as mock_min:
+        with (
+            patch("docking.tasks._run_p2rank"),
+            patch("docking.tasks._run_structure_prep"),
+            patch("docking.tasks._run_vina_docking"),
+            patch("docking.tasks._run_interaction_analysis"),
+            patch("docking.tasks._run_energy_minimization") as mock_min,
+        ):
             run_docking_pipeline.run(sample_job.id)
 
         mock_min.assert_called_once()
@@ -102,11 +107,13 @@ class TestRefinementIntegration:
         sample_job.refine_poses = False
         sample_job.save()
 
-        with patch("docking.tasks._run_p2rank"), \
-             patch("docking.tasks._run_structure_prep"), \
-             patch("docking.tasks._run_vina_docking"), \
-             patch("docking.tasks._run_interaction_analysis"), \
-             patch("docking.tasks._run_energy_minimization") as mock_min:
+        with (
+            patch("docking.tasks._run_p2rank"),
+            patch("docking.tasks._run_structure_prep"),
+            patch("docking.tasks._run_vina_docking"),
+            patch("docking.tasks._run_interaction_analysis"),
+            patch("docking.tasks._run_energy_minimization") as mock_min,
+        ):
             run_docking_pipeline.run(sample_job.id)
 
         mock_min.assert_not_called()

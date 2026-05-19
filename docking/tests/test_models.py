@@ -57,8 +57,13 @@ class TestPocket:
 
         with pytest.raises(IntegrityError):
             Pocket.objects.create(
-                job=sample_job, rank=1, score=5.0, probability=0.5,
-                center_x=0, center_y=0, center_z=0,
+                job=sample_job,
+                rank=1,
+                score=5.0,
+                probability=0.5,
+                center_x=0,
+                center_y=0,
+                center_z=0,
             )
 
 
@@ -69,14 +74,18 @@ class TestDockingResult:
 
     def test_combined_score_zero_affinity(self, sample_pocket):
         dr = DockingResult.objects.create(
-            pocket=sample_pocket, pose_rank=2, affinity=0.0,
+            pocket=sample_pocket,
+            pose_rank=2,
+            affinity=0.0,
         )
         score = dr.compute_combined_score()
         assert score == pytest.approx(0.4 * sample_pocket.probability)
 
     def test_combined_score_very_strong(self, sample_pocket):
         dr = DockingResult.objects.create(
-            pocket=sample_pocket, pose_rank=3, affinity=-15.0,
+            pocket=sample_pocket,
+            pose_rank=3,
+            affinity=-15.0,
         )
         score = dr.compute_combined_score()
         expected = 0.4 * sample_pocket.probability + 0.6 * 1.0

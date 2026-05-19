@@ -17,11 +17,16 @@ services:
       - ./media:/app/media
       - db_data:/app/data
       - static_files:/app/staticfiles
+    env_file:
+      - path: .env
+        required: false
     environment:
       - DJANGO_SETTINGS_MODULE=pocketdock.settings
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
-      - DEBUG=1
+      # DEBUG=1 makes docker-compose work out-of-the-box for local demo/dev.
+      # For production, set DEBUG=0 and DJANGO_SECRET_KEY in your .env file.
+      - DEBUG=${DEBUG:-1}
     depends_on:
       - redis
 
@@ -32,11 +37,14 @@ services:
     volumes:
       - ./media:/app/media
       - db_data:/app/data
+    env_file:
+      - path: .env
+        required: false
     environment:
       - DJANGO_SETTINGS_MODULE=pocketdock.settings
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
-      - DEBUG=1
+      - DEBUG=${DEBUG:-1}
     depends_on:
       - redis
       - web
@@ -51,11 +59,12 @@ services:
   #   volumes:
   #     - ./media:/app/media
   #     - db_data:/app/data
+  #   env_file:
+  #     - .env
   #   environment:
   #     - DJANGO_SETTINGS_MODULE=pocketdock.settings
   #     - CELERY_BROKER_URL=redis://redis:6379/0
   #     - CELERY_RESULT_BACKEND=redis://redis:6379/0
-  #     - DEBUG=1
   #   depends_on:
   #     - redis
   #     - web

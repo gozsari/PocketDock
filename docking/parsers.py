@@ -4,7 +4,6 @@ import csv
 import logging
 import re
 from pathlib import Path
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -26,10 +25,12 @@ def parse_p2rank_predictions(csv_path: str | Path) -> list[dict]:
         return pockets
 
     skipped = 0
-    with open(path, "r") as f:
+    with open(path) as f:
         reader = csv.DictReader(f)
         for row_num, row in enumerate(reader, start=2):
-            cleaned = {k.strip(): v.strip() for k, v in row.items() if k is not None and v is not None}
+            cleaned = {
+                k.strip(): v.strip() for k, v in row.items() if k is not None and v is not None
+            }
             try:
                 pocket = {
                     "rank": int(cleaned["rank"]),
@@ -69,7 +70,7 @@ def parse_vina_output(pdbqt_path: str | Path) -> list[dict]:
     current_pose = None
     pose_rank = 0
 
-    with open(path, "r") as f:
+    with open(path) as f:
         for line in f:
             if line.startswith("MODEL"):
                 pose_rank += 1
@@ -91,7 +92,7 @@ def parse_vina_output(pdbqt_path: str | Path) -> list[dict]:
     return poses
 
 
-def extract_residue_coordinates(pdb_path: str | Path, residue_ids_str: str) -> Optional[dict]:
+def extract_residue_coordinates(pdb_path: str | Path, residue_ids_str: str) -> dict | None:
     """
     Extract min/max coordinates from a PDB file for given residue IDs
     to compute an appropriate grid box size.
@@ -117,7 +118,7 @@ def extract_residue_coordinates(pdb_path: str | Path, residue_ids_str: str) -> O
         logger.warning("PDB file not found for coordinate extraction: %s", path)
         return None
 
-    with open(path, "r") as f:
+    with open(path) as f:
         for line in f:
             if line.startswith(("ATOM", "HETATM")):
                 try:
@@ -133,11 +134,14 @@ def extract_residue_coordinates(pdb_path: str | Path, residue_ids_str: str) -> O
     if not coords:
         return None
 
-    xs, ys, zs = zip(*coords)
+    xs, ys, zs = zip(*coords, strict=True)
     return {
-        "min_x": min(xs), "max_x": max(xs),
-        "min_y": min(ys), "max_y": max(ys),
-        "min_z": min(zs), "max_z": max(zs),
+        "min_x": min(xs),
+        "max_x": max(xs),
+        "min_y": min(ys),
+        "max_y": max(ys),
+        "min_z": min(zs),
+        "max_z": max(zs),
         "size_x": max(xs) - min(xs),
         "size_y": max(ys) - min(ys),
         "size_z": max(zs) - min(zs),

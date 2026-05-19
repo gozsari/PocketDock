@@ -1,13 +1,12 @@
-import pytest
 from unittest.mock import patch
 
+import pytest
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import Client
 from django.urls import reverse
 
 from docking.models import DockingJob, DockingResult, Pocket
 from docking.views import _split_multi_sdf
-
 
 PROTEIN_PDB = b"ATOM      1  N   ALA A   1       0.0   0.0   0.0  1.00  0.00           N\nEND\n"
 SINGLE_SDF = b"\n  SDF\n\n  1  0  0  0  0  0  0  0  0  0  1 V2000\n    0.0    0.0    0.0 C   0  0\nM  END\n$$$$\n"
@@ -29,7 +28,7 @@ class TestSplitMultiSDF:
         assert result[0][0] == "aspirin"
         assert result[1][0] == "ibuprofen"
         assert result[2][0] == "caffeine"
-        for name, content, filename in result:
+        for _name, content, filename in result:
             assert b"$$$$" in content
             assert filename.endswith(".sdf")
 
@@ -53,15 +52,18 @@ class TestBatchJobCreation:
         ligand = SimpleUploadedFile("library.sdf", MULTI_SDF, content_type="chemical/x-mdl-sdfile")
 
         with patch("docking.views._enqueue_pipeline", return_value=True):
-            resp = client.post(reverse("docking:upload"), {
-                "mode": "batch",
-                "name": "Test Batch",
-                "protein_file": protein,
-                "ligand_files": ligand,
-                "num_pockets": 3,
-                "exhaustiveness": 8,
-                "scoring_function": "vina",
-            })
+            resp = client.post(
+                reverse("docking:upload"),
+                {
+                    "mode": "batch",
+                    "name": "Test Batch",
+                    "protein_file": protein,
+                    "ligand_files": ligand,
+                    "num_pockets": 3,
+                    "exhaustiveness": 8,
+                    "scoring_function": "vina",
+                },
+            )
 
         assert resp.status_code == 302
         batch_jobs = DockingJob.objects.filter(batch_id__isnull=False).exclude(batch_id="")
@@ -80,15 +82,18 @@ class TestBatchJobCreation:
         lig2 = SimpleUploadedFile("mol_b.mol2", b"mol2 content 2", content_type="chemical/x-mol2")
 
         with patch("docking.views._enqueue_pipeline", return_value=True):
-            resp = client.post(reverse("docking:upload"), {
-                "mode": "batch",
-                "name": "Multi File Batch",
-                "protein_file": protein,
-                "ligand_files": [lig1, lig2],
-                "num_pockets": 2,
-                "exhaustiveness": 4,
-                "scoring_function": "vina",
-            })
+            resp = client.post(
+                reverse("docking:upload"),
+                {
+                    "mode": "batch",
+                    "name": "Multi File Batch",
+                    "protein_file": protein,
+                    "ligand_files": [lig1, lig2],
+                    "num_pockets": 2,
+                    "exhaustiveness": 4,
+                    "scoring_function": "vina",
+                },
+            )
 
         assert resp.status_code == 302
         batch_jobs = DockingJob.objects.filter(batch_id__isnull=False).exclude(batch_id="")
@@ -101,9 +106,10 @@ class TestBatchJobCreation:
 class TestBatchDashboard:
     def _create_batch(self):
         from django.core.files.uploadedfile import SimpleUploadedFile
+
         batch_id = "test_batch_1"
         jobs = []
-        for i, name in enumerate(["aspirin", "ibuprofen"]):
+        for name in ["aspirin", "ibuprofen"]:
             job = DockingJob.objects.create(
                 name=f"Test - {name}",
                 batch_id=batch_id,
@@ -133,11 +139,19 @@ class TestBatchDashboard:
         jobs[0].save()
 
         pocket = Pocket.objects.create(
-            job=jobs[0], rank=1, score=10.0, probability=0.9,
-            center_x=0, center_y=0, center_z=0,
+            job=jobs[0],
+            rank=1,
+            score=10.0,
+            probability=0.9,
+            center_x=0,
+            center_y=0,
+            center_z=0,
         )
         DockingResult.objects.create(
-            pocket=pocket, pose_rank=1, affinity=-7.5, combined_score=0.6,
+            pocket=pocket,
+            pose_rank=1,
+            affinity=-7.5,
+            combined_score=0.6,
         )
 
         client = Client()
@@ -167,15 +181,18 @@ class TestSingleLigandRegression:
         ligand = SimpleUploadedFile("ligand.sdf", SINGLE_SDF)
 
         with patch("docking.views._enqueue_pipeline", return_value=True):
-            resp = client.post(reverse("docking:upload"), {
-                "mode": "single",
-                "name": "Single Job",
-                "protein_file": protein,
-                "ligand_file": ligand,
-                "num_pockets": 3,
-                "exhaustiveness": 8,
-                "scoring_function": "vina",
-            })
+            resp = client.post(
+                reverse("docking:upload"),
+                {
+                    "mode": "single",
+                    "name": "Single Job",
+                    "protein_file": protein,
+                    "ligand_file": ligand,
+                    "num_pockets": 3,
+                    "exhaustiveness": 8,
+                    "scoring_function": "vina",
+                },
+            )
 
         assert resp.status_code == 302
         job = DockingJob.objects.get(name="Single Job")

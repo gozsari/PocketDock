@@ -1,7 +1,8 @@
-import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
-from docking.models import DockingJob, DockingResult
+import pytest
+
+from docking.models import DockingJob
 
 
 def _mock_rdkit_numpy():
@@ -36,15 +37,25 @@ class TestMMGBSARescoring:
 
         pose_dir = sample_job.job_path / "results"
         pose_dir.mkdir(parents=True, exist_ok=True)
-        pose_file = pose_dir / f"pocket_{sample_result.pocket.rank}_pose_{sample_result.pose_rank}.pdb"
-        pose_file.write_text("ATOM      1  C   LIG A   1       0.0   0.0   0.0  1.00  0.00           C\nEND\n")
+        pose_file = (
+            pose_dir / f"pocket_{sample_result.pocket.rank}_pose_{sample_result.pose_rank}.pdb"
+        )
+        pose_file.write_text(
+            "ATOM      1  C   LIG A   1       0.0   0.0   0.0  1.00  0.00           C\nEND\n"
+        )
 
         mock_template = MagicMock()
-        with patch.dict("sys.modules", _mock_rdkit_numpy()), \
-             patch("docking.tasks._parse_protein_for_mmgbsa", return_value={"coords": [], "charges": [], "radii": []}), \
-             patch("docking.tasks._prepare_ligand_template", return_value=FAKE_LIGAND_TEMPLATE_DATA), \
-             patch("docking.tasks._compute_mmgbsa_single", return_value=-42.5):
+        with (
+            patch.dict("sys.modules", _mock_rdkit_numpy()),
+            patch(
+                "docking.tasks._parse_protein_for_mmgbsa",
+                return_value={"coords": [], "charges": [], "radii": []},
+            ),
+            patch("docking.tasks._prepare_ligand_template", return_value=FAKE_LIGAND_TEMPLATE_DATA),
+            patch("docking.tasks._compute_mmgbsa_single", return_value=-42.5),
+        ):
             from rdkit import Chem
+
             Chem.MolFromMolFile = MagicMock(return_value=mock_template)
             _run_mmgbsa_rescoring(sample_job)
 
@@ -56,15 +67,25 @@ class TestMMGBSARescoring:
 
         pose_dir = sample_job.job_path / "results"
         pose_dir.mkdir(parents=True, exist_ok=True)
-        pose_file = pose_dir / f"pocket_{sample_result.pocket.rank}_pose_{sample_result.pose_rank}.pdb"
-        pose_file.write_text("ATOM      1  C   LIG A   1       0.0   0.0   0.0  1.00  0.00           C\nEND\n")
+        pose_file = (
+            pose_dir / f"pocket_{sample_result.pocket.rank}_pose_{sample_result.pose_rank}.pdb"
+        )
+        pose_file.write_text(
+            "ATOM      1  C   LIG A   1       0.0   0.0   0.0  1.00  0.00           C\nEND\n"
+        )
 
         mock_template = MagicMock()
-        with patch.dict("sys.modules", _mock_rdkit_numpy()), \
-             patch("docking.tasks._parse_protein_for_mmgbsa", return_value={"coords": [], "charges": [], "radii": []}), \
-             patch("docking.tasks._prepare_ligand_template", return_value=FAKE_LIGAND_TEMPLATE_DATA), \
-             patch("docking.tasks._compute_mmgbsa_single", return_value=-85.3):
+        with (
+            patch.dict("sys.modules", _mock_rdkit_numpy()),
+            patch(
+                "docking.tasks._parse_protein_for_mmgbsa",
+                return_value={"coords": [], "charges": [], "radii": []},
+            ),
+            patch("docking.tasks._prepare_ligand_template", return_value=FAKE_LIGAND_TEMPLATE_DATA),
+            patch("docking.tasks._compute_mmgbsa_single", return_value=-85.3),
+        ):
             from rdkit import Chem
+
             Chem.MolFromMolFile = MagicMock(return_value=mock_template)
             _run_mmgbsa_rescoring(sample_job)
 
@@ -76,15 +97,28 @@ class TestMMGBSARescoring:
 
         pose_dir = sample_job.job_path / "results"
         pose_dir.mkdir(parents=True, exist_ok=True)
-        pose_file = pose_dir / f"pocket_{sample_result.pocket.rank}_pose_{sample_result.pose_rank}.pdb"
-        pose_file.write_text("ATOM      1  C   LIG A   1       0.0   0.0   0.0  1.00  0.00           C\nEND\n")
+        pose_file = (
+            pose_dir / f"pocket_{sample_result.pocket.rank}_pose_{sample_result.pose_rank}.pdb"
+        )
+        pose_file.write_text(
+            "ATOM      1  C   LIG A   1       0.0   0.0   0.0  1.00  0.00           C\nEND\n"
+        )
 
         mock_template = MagicMock()
-        with patch.dict("sys.modules", _mock_rdkit_numpy()), \
-             patch("docking.tasks._parse_protein_for_mmgbsa", return_value={"coords": [], "charges": [], "radii": []}), \
-             patch("docking.tasks._prepare_ligand_template", return_value=FAKE_LIGAND_TEMPLATE_DATA), \
-             patch("docking.tasks._compute_mmgbsa_single", side_effect=RuntimeError("force field failed")):
+        with (
+            patch.dict("sys.modules", _mock_rdkit_numpy()),
+            patch(
+                "docking.tasks._parse_protein_for_mmgbsa",
+                return_value={"coords": [], "charges": [], "radii": []},
+            ),
+            patch("docking.tasks._prepare_ligand_template", return_value=FAKE_LIGAND_TEMPLATE_DATA),
+            patch(
+                "docking.tasks._compute_mmgbsa_single",
+                side_effect=RuntimeError("force field failed"),
+            ),
+        ):
             from rdkit import Chem
+
             Chem.MolFromMolFile = MagicMock(return_value=mock_template)
             _run_mmgbsa_rescoring(sample_job)
 
@@ -94,9 +128,12 @@ class TestMMGBSARescoring:
     def test_skips_when_ligand_sdf_unreadable(self, sample_job, sample_result):
         from docking.tasks import _run_mmgbsa_rescoring
 
-        with patch.dict("sys.modules", _mock_rdkit_numpy()), \
-             patch("docking.tasks._parse_protein_for_mmgbsa") as mock_parse:
+        with (
+            patch.dict("sys.modules", _mock_rdkit_numpy()),
+            patch("docking.tasks._parse_protein_for_mmgbsa") as mock_parse,
+        ):
             from rdkit import Chem
+
             Chem.MolFromMolFile = MagicMock(return_value=None)
             _run_mmgbsa_rescoring(sample_job)
 
@@ -108,10 +145,13 @@ class TestMMGBSARescoring:
         from docking.tasks import _run_mmgbsa_rescoring
 
         mock_template = MagicMock()
-        with patch.dict("sys.modules", _mock_rdkit_numpy()), \
-             patch("docking.tasks._parse_protein_for_mmgbsa", return_value=None), \
-             patch("docking.tasks._compute_mmgbsa_single") as mock_compute:
+        with (
+            patch.dict("sys.modules", _mock_rdkit_numpy()),
+            patch("docking.tasks._parse_protein_for_mmgbsa", return_value=None),
+            patch("docking.tasks._compute_mmgbsa_single") as mock_compute,
+        ):
             from rdkit import Chem
+
             Chem.MolFromMolFile = MagicMock(return_value=mock_template)
             _run_mmgbsa_rescoring(sample_job)
 
@@ -123,11 +163,17 @@ class TestMMGBSARescoring:
         from docking.tasks import _run_mmgbsa_rescoring
 
         mock_template = MagicMock()
-        with patch.dict("sys.modules", _mock_rdkit_numpy()), \
-             patch("docking.tasks._parse_protein_for_mmgbsa", return_value={"coords": [], "charges": [], "radii": []}), \
-             patch("docking.tasks._prepare_ligand_template", return_value=None), \
-             patch("docking.tasks._compute_mmgbsa_single") as mock_compute:
+        with (
+            patch.dict("sys.modules", _mock_rdkit_numpy()),
+            patch(
+                "docking.tasks._parse_protein_for_mmgbsa",
+                return_value={"coords": [], "charges": [], "radii": []},
+            ),
+            patch("docking.tasks._prepare_ligand_template", return_value=None),
+            patch("docking.tasks._compute_mmgbsa_single") as mock_compute,
+        ):
             from rdkit import Chem
+
             Chem.MolFromMolFile = MagicMock(return_value=mock_template)
             _run_mmgbsa_rescoring(sample_job)
 
@@ -140,10 +186,12 @@ class TestMMGBSARescoring:
 class TestComputeMMGBSASingle:
     def test_function_exists(self):
         from docking.tasks import _compute_mmgbsa_single
+
         assert callable(_compute_mmgbsa_single)
 
     def test_helper_functions_exist(self):
         from docking.tasks import _parse_ligand_pdb_coords, _prepare_ligand_template
+
         assert callable(_parse_ligand_pdb_coords)
         assert callable(_prepare_ligand_template)
 
@@ -156,12 +204,14 @@ class TestMMGBSAIntegration:
         sample_job.rescore_mmgbsa = True
         sample_job.save()
 
-        with patch("docking.tasks._run_p2rank"), \
-             patch("docking.tasks._run_structure_prep"), \
-             patch("docking.tasks._compute_admet_properties"), \
-             patch("docking.tasks._run_vina_docking"), \
-             patch("docking.tasks._run_interaction_analysis"), \
-             patch("docking.tasks._run_mmgbsa_rescoring") as mock_mmgbsa:
+        with (
+            patch("docking.tasks._run_p2rank"),
+            patch("docking.tasks._run_structure_prep"),
+            patch("docking.tasks._compute_admet_properties"),
+            patch("docking.tasks._run_vina_docking"),
+            patch("docking.tasks._run_interaction_analysis"),
+            patch("docking.tasks._run_mmgbsa_rescoring") as mock_mmgbsa,
+        ):
             run_docking_pipeline.run(sample_job.id)
 
         mock_mmgbsa.assert_called_once()
@@ -172,12 +222,14 @@ class TestMMGBSAIntegration:
         sample_job.rescore_mmgbsa = False
         sample_job.save()
 
-        with patch("docking.tasks._run_p2rank"), \
-             patch("docking.tasks._run_structure_prep"), \
-             patch("docking.tasks._compute_admet_properties"), \
-             patch("docking.tasks._run_vina_docking"), \
-             patch("docking.tasks._run_interaction_analysis"), \
-             patch("docking.tasks._run_mmgbsa_rescoring") as mock_mmgbsa:
+        with (
+            patch("docking.tasks._run_p2rank"),
+            patch("docking.tasks._run_structure_prep"),
+            patch("docking.tasks._compute_admet_properties"),
+            patch("docking.tasks._run_vina_docking"),
+            patch("docking.tasks._run_interaction_analysis"),
+            patch("docking.tasks._run_mmgbsa_rescoring") as mock_mmgbsa,
+        ):
             run_docking_pipeline.run(sample_job.id)
 
         mock_mmgbsa.assert_not_called()

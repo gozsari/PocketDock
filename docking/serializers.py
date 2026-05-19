@@ -7,9 +7,16 @@ class PocketSerializer(serializers.ModelSerializer):
     class Meta:
         model = Pocket
         fields = [
-            "id", "rank", "score", "probability",
-            "center_x", "center_y", "center_z",
-            "residue_ids", "sas_points", "composition",
+            "id",
+            "rank",
+            "score",
+            "probability",
+            "center_x",
+            "center_y",
+            "center_z",
+            "residue_ids",
+            "sas_points",
+            "composition",
         ]
 
 
@@ -23,11 +30,20 @@ class DockingResultSerializer(serializers.ModelSerializer):
     class Meta:
         model = DockingResult
         fields = [
-            "id", "pocket_rank", "pocket_probability",
-            "pose_rank", "affinity", "rmsd_lb", "rmsd_ub",
-            "pose_file", "combined_score", "ligand_efficiency",
+            "id",
+            "pocket_rank",
+            "pocket_probability",
+            "pose_rank",
+            "affinity",
+            "rmsd_lb",
+            "rmsd_ub",
+            "pose_file",
+            "combined_score",
+            "ligand_efficiency",
             "mmgbsa_score",
-            "center_x", "center_y", "center_z",
+            "center_x",
+            "center_y",
+            "center_z",
         ]
 
 
@@ -38,10 +54,17 @@ class DockingJobStatusSerializer(serializers.ModelSerializer):
     class Meta:
         model = DockingJob
         fields = [
-            "id", "name", "status", "status_display",
-            "num_pockets", "exhaustiveness", "scoring_function",
-            "error_message", "num_results",
-            "created_at", "updated_at",
+            "id",
+            "name",
+            "status",
+            "status_display",
+            "num_pockets",
+            "exhaustiveness",
+            "scoring_function",
+            "error_message",
+            "num_results",
+            "created_at",
+            "updated_at",
         ]
 
     def get_num_results(self, obj):

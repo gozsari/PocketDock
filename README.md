@@ -28,6 +28,10 @@ docker compose up --build
 
 The application will be available at **<http://localhost:8000>**. See the [Getting Started guide](https://pocketdock.readthedocs.io/en/latest/getting-started/) for prerequisites and first-run walkthrough.
 
+## Try the example
+
+A ready-to-run example is shipped in [examples/egfr_erlotinib/](examples/egfr_erlotinib/) — the EGFR kinase domain (PDB 4HJO) plus erlotinib. Upload the two files on the home page, submit, and you should recover the canonical ATP-pocket binding mode in a few minutes.
+
 ## Architecture
 
 | Service | Description |

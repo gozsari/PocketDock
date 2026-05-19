@@ -15,9 +15,13 @@ def fixtures_dir():
 @pytest.fixture
 def sample_job(db, tmp_path):
     protein = tmp_path / "protein.pdb"
-    protein.write_text("ATOM      1  N   ALA A   1       0.0   0.0   0.0  1.00  0.00           N\nEND\n")
+    protein.write_text(
+        "ATOM      1  N   ALA A   1       0.0   0.0   0.0  1.00  0.00           N\nEND\n"
+    )
     ligand = tmp_path / "ligand.sdf"
-    ligand.write_text("\n  SDF\n\n  1  0  0  0  0  0  0  0  0  0  1 V2000\n    0.0    0.0    0.0 C   0  0\nM  END\n")
+    ligand.write_text(
+        "\n  SDF\n\n  1  0  0  0  0  0  0  0  0  0  1 V2000\n    0.0    0.0    0.0 C   0  0\nM  END\n"
+    )
 
     from django.core.files.uploadedfile import SimpleUploadedFile
 

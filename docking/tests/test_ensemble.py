@@ -1,12 +1,11 @@
-import pytest
-from unittest.mock import patch, MagicMock, PropertyMock
+from unittest.mock import MagicMock, patch
 
+import pytest
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import Client
 from django.urls import reverse
 
 from docking.models import DockingJob, DockingResult, Pocket
-
 
 PROTEIN_PDB = b"ATOM      1  N   ALA A   1       0.0   0.0   0.0  1.00  0.00           N\nEND\n"
 SINGLE_SDF = b"\n  SDF\n\n  1  0  0  0  0  0  0  0  0  0  1 V2000\n    0.0    0.0    0.0 C   0  0\nM  END\n$$$$\n"
@@ -87,15 +86,17 @@ class TestEnsemblePipeline:
         for i in range(3):
             p = MagicMock()
             p.read_bytes.return_value = PROTEIN_PDB
-            p.name = f"conf_{i+1}.pdb"
+            p.name = f"conf_{i + 1}.pdb"
             mock_conf_paths.append(p)
 
-        with patch("docking.tasks._generate_conformations_nma", return_value=mock_conf_paths), \
-             patch("docking.tasks.run_docking_pipeline") as mock_task:
-
+        with (
+            patch("docking.tasks._generate_conformations_nma", return_value=mock_conf_paths),
+            patch("docking.tasks.run_docking_pipeline") as mock_task,
+        ):
             mock_task.delay = MagicMock(return_value=MagicMock(id="fake-task-id"))
 
             from docking.tasks import _run_ensemble_docking
+
             _run_ensemble_docking(job)
 
         job.refresh_from_db()
@@ -104,7 +105,8 @@ class TestEnsemblePipeline:
         assert mock_task.delay.call_count == 3
 
         children = DockingJob.objects.filter(
-            ensemble_id=job.ensemble_id, conformation_index__gt=0,
+            ensemble_id=job.ensemble_id,
+            conformation_index__gt=0,
         )
         assert children.count() == 3
         for child in children:
@@ -119,16 +121,20 @@ class TestEnsemblePipeline:
         for i in range(2):
             p = MagicMock()
             p.read_bytes.return_value = PROTEIN_PDB
-            p.name = f"conf_{i+1}.pdb"
+            p.name = f"conf_{i + 1}.pdb"
             mock_conf_paths.append(p)
 
-        with patch("docking.tasks._generate_conformations_md", return_value=mock_conf_paths) as mock_md, \
-             patch("docking.tasks._generate_conformations_nma") as mock_nma, \
-             patch("docking.tasks.run_docking_pipeline") as mock_task:
-
+        with (
+            patch(
+                "docking.tasks._generate_conformations_md", return_value=mock_conf_paths
+            ) as mock_md,
+            patch("docking.tasks._generate_conformations_nma") as mock_nma,
+            patch("docking.tasks.run_docking_pipeline") as mock_task,
+        ):
             mock_task.delay = MagicMock(return_value=MagicMock(id="fake-id"))
 
             from docking.tasks import _run_ensemble_docking
+
             _run_ensemble_docking(job)
 
         mock_md.assert_called_once()
@@ -140,6 +146,7 @@ class TestEnsemblePipeline:
 
         with patch("docking.tasks._run_ensemble_docking") as mock_ens:
             from docking.tasks import run_docking_pipeline
+
             run_docking_pipeline(job.id)
 
         mock_ens.assert_called_once()
@@ -155,13 +162,15 @@ class TestEnsemblePipeline:
             ensemble_id="test_ens",
         )
 
-        with patch("docking.tasks._run_p2rank") as mock_p2rank, \
-             patch("docking.tasks._run_structure_prep"), \
-             patch("docking.tasks._compute_admet_properties"), \
-             patch("docking.tasks._run_vina_docking"), \
-             patch("docking.tasks._run_interaction_analysis"):
-
+        with (
+            patch("docking.tasks._run_p2rank") as mock_p2rank,
+            patch("docking.tasks._run_structure_prep"),
+            patch("docking.tasks._compute_admet_properties"),
+            patch("docking.tasks._run_vina_docking"),
+            patch("docking.tasks._run_interaction_analysis"),
+        ):
             from docking.tasks import run_docking_pipeline
+
             run_docking_pipeline(job.id)
 
         mock_p2rank.assert_called_once()
@@ -177,14 +186,16 @@ class TestEnsemblePipeline:
             ensemble_method="none",
         )
 
-        with patch("docking.tasks._run_ensemble_docking") as mock_ens, \
-             patch("docking.tasks._run_p2rank"), \
-             patch("docking.tasks._run_structure_prep"), \
-             patch("docking.tasks._compute_admet_properties"), \
-             patch("docking.tasks._run_vina_docking"), \
-             patch("docking.tasks._run_interaction_analysis"):
-
+        with (
+            patch("docking.tasks._run_ensemble_docking") as mock_ens,
+            patch("docking.tasks._run_p2rank"),
+            patch("docking.tasks._run_structure_prep"),
+            patch("docking.tasks._compute_admet_properties"),
+            patch("docking.tasks._run_vina_docking"),
+            patch("docking.tasks._run_interaction_analysis"),
+        ):
             from docking.tasks import run_docking_pipeline
+
             run_docking_pipeline(job.id)
 
         mock_ens.assert_not_called()
@@ -210,11 +221,19 @@ class TestEnsembleDashboard:
         children[0].save()
 
         pocket = Pocket.objects.create(
-            job=children[0], rank=1, score=10.0, probability=0.9,
-            center_x=0, center_y=0, center_z=0,
+            job=children[0],
+            rank=1,
+            score=10.0,
+            probability=0.9,
+            center_x=0,
+            center_y=0,
+            center_z=0,
         )
         DockingResult.objects.create(
-            pocket=pocket, pose_rank=1, affinity=-7.5, combined_score=0.6,
+            pocket=pocket,
+            pose_rank=1,
+            affinity=-7.5,
+            combined_score=0.6,
         )
 
         client = Client()
@@ -273,15 +292,18 @@ class TestEnsembleRegression:
         ligand = SimpleUploadedFile("ligand.sdf", SINGLE_SDF)
 
         with patch("docking.views._enqueue_pipeline", return_value=True):
-            resp = client.post(reverse("docking:upload"), {
-                "mode": "single",
-                "name": "Normal Job",
-                "protein_file": protein,
-                "ligand_file": ligand,
-                "num_pockets": 3,
-                "exhaustiveness": 8,
-                "scoring_function": "vina",
-            })
+            resp = client.post(
+                reverse("docking:upload"),
+                {
+                    "mode": "single",
+                    "name": "Normal Job",
+                    "protein_file": protein,
+                    "ligand_file": ligand,
+                    "num_pockets": 3,
+                    "exhaustiveness": 8,
+                    "scoring_function": "vina",
+                },
+            )
 
         assert resp.status_code == 302
         job = DockingJob.objects.get(name="Normal Job")
@@ -313,18 +335,21 @@ class TestEnsembleRegression:
         ligand = SimpleUploadedFile("ligand.sdf", SINGLE_SDF)
 
         with patch("docking.views._enqueue_pipeline", return_value=True):
-            resp = client.post(reverse("docking:upload"), {
-                "mode": "single",
-                "name": "Ensemble Job",
-                "protein_file": protein,
-                "ligand_file": ligand,
-                "num_pockets": 3,
-                "exhaustiveness": 8,
-                "scoring_function": "vina",
-                "ensemble_enabled": True,
-                "ensemble_method": "nma",
-                "num_conformations": 5,
-            })
+            resp = client.post(
+                reverse("docking:upload"),
+                {
+                    "mode": "single",
+                    "name": "Ensemble Job",
+                    "protein_file": protein,
+                    "ligand_file": ligand,
+                    "num_pockets": 3,
+                    "exhaustiveness": 8,
+                    "scoring_function": "vina",
+                    "ensemble_enabled": True,
+                    "ensemble_method": "nma",
+                    "num_conformations": 5,
+                },
+            )
 
         assert resp.status_code == 302
         job = DockingJob.objects.get(name="Ensemble Job")
