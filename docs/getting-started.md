@@ -29,6 +29,69 @@ When the logs settle, open [http://localhost:8000](http://localhost:8000).
     - **celery** — worker that runs the docking pipeline
     - **redis** — message broker between web and worker
 
+## Run from the published image
+
+If you don't need to modify the code, you can run PocketDock straight from the multi-arch image published to GitHub Container Registry — no clone required.
+
+Create an empty directory, save the snippet below as `docker-compose.yml`, then run `docker compose up`:
+
+```yaml
+services:
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - redis_data:/data
+
+  web:
+    image: ghcr.io/gozsari/pocketdock:latest
+    command: >
+      sh -c "python manage.py migrate --noinput &&
+             gunicorn pocketdock.wsgi:application --bind 0.0.0.0:8000 --workers 3 --timeout 300"
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./media:/app/media
+      - db_data:/app/data
+      - static_files:/app/staticfiles
+    environment:
+      - DJANGO_SETTINGS_MODULE=pocketdock.settings
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - DEBUG=${DEBUG:-1}
+    depends_on:
+      - redis
+
+  celery:
+    image: ghcr.io/gozsari/pocketdock:latest
+    command: >
+      sh -c "sleep 5 && celery -A pocketdock worker -l info --concurrency=2"
+    volumes:
+      - ./media:/app/media
+      - db_data:/app/data
+    environment:
+      - DJANGO_SETTINGS_MODULE=pocketdock.settings
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - DEBUG=${DEBUG:-1}
+    depends_on:
+      - redis
+      - web
+
+volumes:
+  redis_data:
+  static_files:
+  db_data:
+```
+
+Open [http://localhost:8000](http://localhost:8000) once the logs settle. Uploaded structures land in `./media/` next to your `docker-compose.yml` so you can inspect them on the host.
+
+### Image tags
+
+`:latest` follows the most recent published build; tagged releases are available as `:vX.Y.Z`. Browse the full tag list at the [GitHub Container Registry package page](https://github.com/gozsari/PocketDock/pkgs/container/pocketdock). Pinning to a release tag is recommended for anything beyond a quick try.
+
+!!! warning "Production deployments"
+    The snippet above runs with `DEBUG=1` so it works out of the box. Before exposing PocketDock to anyone else, create a `.env` file alongside `docker-compose.yml` with `DEBUG=0` and a long, random `DJANGO_SECRET_KEY`, and add `env_file: [.env]` to the `web` and `celery` services.
+
 ## Your first job
 
 1. Open the app and you'll land on the **upload page**.

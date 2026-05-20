@@ -32,11 +32,17 @@ A web-based platform that predicts druggable binding pockets with **P2Rank**, do
 
 ## Quick Start (Docker)
 
+**Option A — run the published image** (no clone needed): copy the compose snippet from [Run from the published image](https://pocketdock.readthedocs.io/en/latest/getting-started/#run-from-the-published-image) into a new directory and run `docker compose up`.
+
+**Option B — build from source**:
+
 ```bash
+git clone https://github.com/gozsari/PocketDock.git
+cd PocketDock
 docker compose up --build
 ```
 
-The application will be available at **<http://localhost:8000>**. See the [Getting Started guide](https://pocketdock.readthedocs.io/en/latest/getting-started/) for prerequisites and first-run walkthrough.
+The application will be available at **<http://localhost:8000>** in either case. See the [Getting Started guide](https://pocketdock.readthedocs.io/en/latest/getting-started/) for prerequisites and first-run walkthrough.
 
 ## Try the example
 
