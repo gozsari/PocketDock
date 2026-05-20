@@ -2,7 +2,7 @@
 
 Ensemble docking accounts for receptor flexibility by generating several plausible conformations of the protein and docking the ligand into all of them. PocketDock offers two flavors — a fast **NMA** mode and a thorough **MD** mode — and ranks results across the ensemble with a consensus score.
 
-<!-- TODO: screenshot — Ensemble dashboard with per-conformation summary and consensus top results → docs/images/ensemble-dashboard.png -->
+![Ensemble dashboard mockup with per-conformation summary](../images/ensemble-dashboard.png)
 
 ## When to use it
 
