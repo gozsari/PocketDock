@@ -1,5 +1,15 @@
 # PocketDock — Automated Molecular Docking Pipeline
 
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
+[![Django 5.x](https://img.shields.io/badge/django-5.x-092e20.svg?logo=django&logoColor=white)](https://www.djangoproject.com/)
+[![Code style: Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
+[![Lint](https://github.com/gozsari/PocketDock/actions/workflows/lint.yml/badge.svg)](https://github.com/gozsari/PocketDock/actions/workflows/lint.yml)
+[![GitHub release](https://img.shields.io/github/v/release/gozsari/PocketDock?include_prereleases&sort=semver)](https://github.com/gozsari/PocketDock/releases)
+[![Docker image](https://img.shields.io/badge/ghcr.io-pocketdock-2496ed.svg?logo=docker&logoColor=white)](https://github.com/gozsari/PocketDock/pkgs/container/pocketdock)
+[![Documentation](https://img.shields.io/readthedocs/pocketdock?logo=readthedocs)](https://pocketdock.readthedocs.io/)
+<!-- [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.<concept_id>.svg)](https://doi.org/10.5281/zenodo.<concept_id>) -->
+
 A web-based platform that predicts druggable binding pockets with **P2Rank**, docks single ligands or whole libraries with **AutoDock Vina**, generates flexible-receptor ensembles via **NMA** or short **OpenMM MD**, computes **ADMET** properties with RDKit, optionally refines poses with OpenMM, and rescores with an approximate **MM-GBSA** method — all visualized in your browser with **3Dmol.js**.
 
 **Documentation**: <https://pocketdock.readthedocs.io/>
