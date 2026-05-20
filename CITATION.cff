@@ -22,6 +22,11 @@ url: "https://pocketdock.readthedocs.io/"
 version: "1.0.0"
 date-released: "2026-05-20"
 license: MIT
+identifiers:
+  - type: doi
+    value: 10.5281/zenodo.20316456
+    description: Concept DOI (all versions)
+
 keywords:
   - molecular-docking
   - autodock-vina
