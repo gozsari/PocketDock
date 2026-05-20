@@ -93,31 +93,6 @@ Full reference: [Configuration](https://pocketdock.readthedocs.io/en/latest/conf
 
 Full reference with request/response schemas: [API Reference](https://pocketdock.readthedocs.io/en/latest/api/).
 
-## Local Development
-
-```bash
-# Create virtual environment
-python -m venv venv
-source venv/bin/activate
-
-# Install Python dependencies
-pip install -r requirements.txt
-
-# Run migrations
-python manage.py migrate
-
-# Start Redis (requires local Redis)
-redis-server &
-
-# Start Celery worker
-celery -A pocketdock worker -l info &
-
-# Run development server
-python manage.py runserver
-```
-
-Note: Local development requires P2Rank and AutoDock Vina to be installed separately. OpenMM and RDKit are pulled in via `requirements.txt`.
-
 ## Citation
 
 If you use PocketDock in your research, please cite it using the metadata in [`CITATION.cff`](CITATION.cff) (v1.0.0, released 2026-05-20).
