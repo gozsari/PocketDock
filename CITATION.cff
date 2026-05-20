@@ -1,6 +1,7 @@
 cff-version: 1.2.0
 message: "If you use PocketDock in your research, please cite it as below."
 title: "PocketDock: Automated Molecular Docking Pipeline"
+doi: 10.5281/zenodo.20316456
 abstract: >-
   A web-based molecular docking platform that predicts druggable binding pockets
   with P2Rank, docks ligands with AutoDock Vina, and ranks results using a
