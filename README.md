@@ -124,4 +124,4 @@ If you use PocketDock in your research, please cite it using the metadata in [`C
 
 ## Acknowledgements
 
-PocketDock was conceived and designed by **Gökhan Özsarı** (Chalmers University of Technology). Development was assisted by [Claude](https://www.anthropic.com/claude) (Anthropic) as an AI coding aid.
+The author thanks the developers of P2Rank, AutoDock Vina, OpenMM, RDKit, Meeko and 3Dmol.js, whose open-source tools PocketDock builds upon. Development of the codebase was assisted in part by the Claude large language model (Anthropic) as a coding aid.
