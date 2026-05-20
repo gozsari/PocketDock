@@ -1,7 +1,7 @@
 # PocketDock pip dependencies.
 #
 # IMPORTANT: this file alone is NOT enough for a working install.
-# The scientific stack (RDKit, OpenMM, PDBFixer, Gemmi) must be installed
+# The scientific stack (RDKit, OpenMM, PDBFixer) must be installed
 # via conda/mamba first, and the external binaries P2Rank and AutoDock Vina
 # must be installed separately. See docs/getting-started.md for the full
 # local-install walkthrough, or just use `docker compose up`.
@@ -11,7 +11,6 @@ djangorestframework>=3.15,<4.0
 celery>=5.4,<6.0
 redis>=5.0,<6.0
 meeko>=0.5,<0.7
-gemmi
 gunicorn>=22.0
 pytest>=8.0
 pytest-django>=4.8

@@ -99,4 +99,4 @@ If you use PocketDock in your research, please cite it using the metadata in [`C
 
 ## Acknowledgements
 
-The author thanks the developers of P2Rank, AutoDock Vina, OpenMM, RDKit, Meeko and 3Dmol.js, whose open-source tools PocketDock builds upon. Development of the codebase was assisted in part by the Claude large language model (Anthropic) as a coding aid.
+The author thanks the developers of P2Rank, AutoDock Vina, OpenMM, PDBFixer, RDKit, Meeko, 3Dmol.js, NumPy and SciPy, whose open-source tools PocketDock builds upon. Development of the codebase was assisted in part by the Claude large language model (Anthropic) as a coding aid.
