@@ -1,0 +1,36 @@
+{
+  "title": "PocketDock: Automated Molecular Docking Pipeline",
+  "description": "A web-based platform for protein pocket prediction (P2Rank), ligand docking (AutoDock Vina), ADMET profiling (RDKit), ensemble-receptor generation (NMA / OpenMM MD), pose refinement (OpenMM), and approximate MM-GBSA rescoring.",
+  "license": "MIT",
+  "upload_type": "software",
+  "access_right": "open",
+  "creators": [
+    {
+      "name": "ÖZSARI, Gökhan",
+      "affiliation": "Chalmers University of Technology"
+    }
+  ],
+  "keywords": [
+    "molecular-docking",
+    "autodock-vina",
+    "p2rank",
+    "drug-discovery",
+    "virtual-screening",
+    "ensemble-docking",
+    "admet",
+    "mm-gbsa",
+    "openmm",
+    "rdkit",
+    "cheminformatics",
+    "binding-pocket-prediction",
+    "interaction-analysis",
+    "batch-docking"
+  ],
+  "related_identifiers": [
+    {
+      "identifier": "https://github.com/gozsari/PocketDock",
+      "relation": "isSupplementTo",
+      "scheme": "url"
+    }
+  ]
+}
