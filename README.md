@@ -10,8 +10,6 @@
 [![Documentation](https://img.shields.io/readthedocs/pocketdock?logo=readthedocs)](https://pocketdock.readthedocs.io/)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20316456.svg)](https://doi.org/10.5281/zenodo.20316456)
 
-10.5281/zenodo.20316456
-
 A web-based platform that predicts druggable binding pockets with **P2Rank**, docks single ligands or whole libraries with **AutoDock Vina**, generates flexible-receptor ensembles via **NMA** or short **OpenMM MD**, computes **ADMET** properties with RDKit, optionally refines poses with OpenMM, and rescores with an approximate **MM-GBSA** method — all visualized in your browser with **3Dmol.js**.
 
 **Documentation**: <https://pocketdock.readthedocs.io/>
