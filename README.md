@@ -120,7 +120,7 @@ Note: Local development requires P2Rank and AutoDock Vina to be installed separa
 
 ## Citation
 
-If you use PocketDock in your research, please cite it using the metadata in [`CITATION.cff`](CITATION.cff) (v2.0.0, released 2026-05-17).
+If you use PocketDock in your research, please cite it using the metadata in [`CITATION.cff`](CITATION.cff) (v1.0.0, released 2026-05-20).
 
 ## Acknowledgements
 
