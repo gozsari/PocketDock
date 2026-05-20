@@ -2,7 +2,7 @@
 
 Batch docking lets you screen many ligands against the same protein in a single submission. PocketDock creates one `DockingJob` per ligand, ties them together with a shared **batch ID**, and shows progress and per-ligand best scores on a dedicated dashboard.
 
-<!-- TODO: screenshot — Batch upload tab with multiple ligand files selected → docs/images/upload-batch-tab.png -->
+![Batch upload tab with multiple ligand files selected](../images/upload-batch-tab.png)
 
 ## When to use it
 
@@ -48,7 +48,7 @@ If you exceed any limit, the form returns a validation error and nothing is subm
 
 After submission you're redirected to `/batch/<batch_id>/`. The dashboard shows:
 
-<!-- TODO: screenshot — Batch dashboard with progress bar and per-ligand rows → docs/images/batch-dashboard.png -->
+![Batch dashboard mockup with progress bar and per-ligand rows](../images/batch-dashboard.png)
 
 | Panel | Contents |
 |-------|----------|

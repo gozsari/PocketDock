@@ -2,8 +2,7 @@
 
 Every PocketDock job ships with an **ADMET / drug-likeness panel** on the results page. Properties are computed automatically from the uploaded ligand with **RDKit** — no opt-in, no extra cost in runtime. The panel sits alongside the docking poses so you can sanity-check a candidate's drug-likeness at the same time you're inspecting its binding pose.
 
-<!-- TODO: screenshot — ADMET panel on the results page with Lipinski and Veber badges → docs/images/admet-panel.png -->
-
+![ADMET panel on the results page with Lipinski and Veber badges](../images/admet-panel.png)
 ## What gets computed
 
 PocketDock computes a focused set of RDKit descriptors that map onto common medicinal-chemistry filters:
